@@ -647,12 +647,19 @@ function clearBusyOnButtons(primaryButton, otherButton) {
   if (otherButton) otherButton.disabled = false;
 }
 
-// Use the Turso-backed backend only when served by our local Node server.
-// On GitHub Pages (*.github.io) or a file:// open there is no server, so we
-// fall back to browser-local (localStorage) accounts instead.
-function usingBackend() {
-  const h = location.hostname;
-  return h === 'localhost' || h === '127.0.0.1';
+// Detect whether an account backend is reachable by probing a lightweight
+// health endpoint. This works for the local Node server AND Cloudflare Pages
+// Functions (both answer /api/health with 200). When there is no backend
+// (e.g. a plain file:// open, or a static host without Functions) we fall
+// back to browser-local (localStorage) accounts. The result is cached.
+let _backendProbe = null;
+function backendAvailable() {
+  if (_backendProbe === null) {
+    _backendProbe = fetch('/api/health', { method: 'GET', cache: 'no-store' })
+      .then((r) => r.ok)
+      .catch(() => false);
+  }
+  return _backendProbe;
 }
 
 async function handleRegister() {
@@ -677,7 +684,7 @@ async function handleRegister() {
     // Derive the password hash locally (plaintext never leaves the browser)…
     const hash = await derivePasswordHash(pass, salt, iterations);
 
-    if (usingBackend()) {
+    if (await backendAvailable()) {
       // …then store it in the Turso-backed database via the backend API.
       const res = await fetch('/api/register', {
         method: 'POST',
@@ -730,7 +737,7 @@ async function handleLogin() {
   showBusyOnButtons(loginBtn, backBtn, 'Checking...');
 
   try {
-    if (usingBackend()) {
+    if (await backendAvailable()) {
       // Fetch this user's stored salt/iterations so we can derive the hash locally.
       const userRes = await fetch('/api/user/' + encodeURIComponent(normalizeName(name)));
       if (!userRes.ok) {

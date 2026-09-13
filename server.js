@@ -56,6 +56,11 @@ app.get('/api/user/:name', async (req, res) => {
   }
 });
 
+// GET /api/health -> lightweight probe so the front-end can detect a backend
+app.get('/api/health', (req, res) => {
+  res.json({ ok: true });
+});
+
 // POST /api/register { name, salt, hash, iterations }
 app.post('/api/register', async (req, res) => {
   try {

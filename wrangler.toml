@@ -1,0 +1,4 @@
+name = "deepest"
+pages_build_output_dir = "Deepest"
+# Pages Functions live in /functions (default) and are deployed automatically.
+# Set TURSO_URL and TURSO_TOKEN in the Cloudflare Pages dashboard (or `wrangler secret`).
