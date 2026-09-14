@@ -838,6 +838,12 @@ const ENEMY_BAT_DAMAGE = 5;       // contact damage the bat deals to the player
 const ENEMY_DROP_RATE = 0.2;      // 20% chance to drop a small fang on death
 const LEVEL2_BAT_COUNT = 3;
 
+// ----- Crocodile enemy (level 4) -----
+const ENEMY_CROC_HP = 30;
+const ENEMY_CROC_RADIUS = 38;
+const ENEMY_CROC_SPEED = 1.6;      // ground-crawl speed toward the player
+const ENEMY_CROC_DAMAGE = 4;       // contact damage the crocodile deals
+
 // ----- Cave boss tuning -----
 const BOSS_RADIUS = PLAYER_RADIUS * 3; // 3x the player's diameter
 const BOSS_CHARGE_SPEED = 14;
@@ -860,7 +866,8 @@ const ITEM_CATEGORIES = [
 ];
 const ITEM_DEFS = {
   'bat-fang': { name: '巨型蝙蝠尖牙', category: 'weapon', range: 96, damage: 5 },
-  'small-bat-fang': { name: '小型蝙蝠尖牙', category: 'material' }
+  'small-bat-fang': { name: '小型蝙蝠尖牙', category: 'material' },
+  'crocodile-scale': { name: '鳄鱼鳞片', category: 'weapon', range: 112, damage: 8 }
 };
 const CATEGORY_COLORS = {
   weapon: '#d9a441', armor: '#6fb3d9', rune: '#9b7bd9', consumable: '#7bd97b', material: '#b08d6a'
@@ -916,6 +923,15 @@ function hasEnteredLevel2(name) {
 }
 function setEnteredLevel2(name) {
   try { localStorage.setItem(level2FlagKeyFor(name), '1'); } catch (e) { }
+}
+function level4FlagKeyFor(name) {
+  return 'deepest_entered_level4_' + (name ? (name.trim().toLowerCase()) : 'anonymous');
+}
+function hasEnteredLevel4(name) {
+  try { return !!localStorage.getItem(level4FlagKeyFor(name)); } catch (e) { return false; }
+}
+function setEnteredLevel4(name) {
+  try { localStorage.setItem(level4FlagKeyFor(name), '1'); } catch (e) { }
 }
 function inventoryKeyFor(name) {
   return 'deepest_inventory_' + (name ? name.trim().toLowerCase() : 'anonymous');
@@ -1011,6 +1027,30 @@ function setupLevel2Scene(gs) {
   gs.player.vy = 0;
 }
 
+// Reconfigure the game for level 4: a flat marsh where a ground-crawling
+// crocodile guards the crocodile scale.
+function setupLevel4Scene(gs) {
+  gs.scene = 'level4';
+  gs.drops = []; gs.backpackOpen = false; gs.dragState = null; gs.backpackItemRects = []; gs.enemies = [];
+  gs.worldWidth = Math.max(W * 3, 3000);
+  const groundY = H - 150;
+  gs.platforms = [{ x: 0, y: groundY, width: gs.worldWidth, height: 20 }];
+  gs.campfire = { x: 700, y: groundY };   // save / heal point
+  gs.caveX = -1;
+  gs.gasX = GAS_START_X;
+  gs.rocks = [];
+  gs.boss = null;
+  gs.wall = null;
+  gs.wallX = 0;
+  // spawn the crocodile on the ground, near the right edge
+  gs.enemies.push(makeCrocodile(gs.worldWidth - 400, groundY - ENEMY_CROC_RADIUS));
+  gs.spawn = { x: 200, y: groundY - PLAYER_RADIUS };
+  gs.player.x = gs.spawn.x;
+  gs.player.y = gs.spawn.y;
+  gs.player.vx = 0;
+  gs.player.vy = 0;
+}
+
 // Restart the current scene from the beginning. Called at the midpoint of a
 // fade transition, so it must NOT clear gs.fade — the fade caller manages that.
 function resetLevel() {
@@ -1048,6 +1088,17 @@ function continueRespawn() {
   gs.fade = { alpha: 0, dir: 1, action: 'respawn' };
 }
 
+// Player pressed Enter/Space on the victory screen: replay from level 1.
+function restartFromChase() {
+  const gs = gameState;
+  if (!gs || gs.fade) return;
+  gs.fade = null;
+  setupChaseScene(gs);
+  gs.player.hp = PLAYER_MAX_HP;
+  gs.status = 'playing';
+  gs.statusTimer = 0;
+}
+
 // Player walked through the opened hole: save progress and fade to the next level.
 function enterNextLevel() {
   const gs = gameState;
@@ -1056,13 +1107,21 @@ function enterNextLevel() {
   gs.fade = { alpha: 0, dir: 1, action: 'to-level2' };
 }
 
+// Player cleared level 3 (all bats): save progress, then fade to the crocodile level.
+function enterLevel4() {
+  const gs = gameState;
+  if (gs.status !== 'playing' || gs.fade) return;
+  setEnteredLevel4(gs.player.name);
+  gs.fade = { alpha: 0, dir: 1, action: 'to-level4' };
+}
+
 function flashSaving(gs) {
   gs.savingTimer = 90; // show "Saving…" for ~1.5s
 }
 
 // ----- Campfire save point (level 3) -----
 function isNearCampfire(gs) {
-  return !!(gs.campfire && gs.scene === 'level2' && Math.abs(gs.player.x - gs.campfire.x) < 90);
+  return !!(gs.campfire && (gs.scene === 'level2' || gs.scene === 'level4') && Math.abs(gs.player.x - gs.campfire.x) < 90);
 }
 function saveAtCampfire() {
   const gs = gameState;
@@ -1082,6 +1141,7 @@ function teleportTo(scene) {
   if (scene === 'chase') setupChaseScene(gs);
   else if (scene === 'cave') setupCaveScene(gs);
   else if (scene === 'level2') setupLevel2Scene(gs);
+  else if (scene === 'level4') setupLevel4Scene(gs);
   else return;
   gs.status = 'playing';
   gs.statusTimer = 0;
@@ -1094,6 +1154,7 @@ function updateFade(gs, dt) {
     f.alpha = 1;
     if (f.action === 'to-cave') setupCaveScene(gs);
     else if (f.action === 'to-level2') setupLevel2Scene(gs);
+    else if (f.action === 'to-level4') setupLevel4Scene(gs);
     else if (f.action === 'respawn') resetLevel();
     f.action = null;
     f.dir = -1; // now fade back in
@@ -1171,6 +1232,21 @@ function updateCaveScene(gs, dt) {
   // walk through the opened hole -> next level
   if (gs.wall && gs.wall.holeOpen && gs.player.x >= gs.wallX + 60) {
     enterNextLevel();
+  }
+}
+
+// Level 3 (plain): once every mutant bat is gone, advance to the crocodile level.
+function updateLevel2Scene(gs, dt) {
+  updateEnemies(gs, dt);
+  if (gs.enemies.length === 0) enterLevel4();
+}
+
+// Level 4 (marsh): the crocodile is the final foe. Victory once its scale is collected.
+function updateLevel4Scene(gs, dt) {
+  updateEnemies(gs, dt);
+  if (gs.enemies.length === 0 && gs.inventory['crocodile-scale'] && gs.status === 'playing' && !gs.fade) {
+    gs.status = 'victory';
+    gs.statusTimer = 0;
   }
 }
 
@@ -1356,7 +1432,9 @@ function attackHitEnemies(gs, range, damage) {
       e.vy = ((e.y - p.y) / len) * ENEMY_KNOCKBACK;
       if (e.hp <= 0) {
         e.alive = false;
-        if (Math.random() < ENEMY_DROP_RATE) spawnDrop(gs, 'small-bat-fang', e.x, e.y);
+        const rate = (e.dropRate != null) ? e.dropRate : ENEMY_DROP_RATE;
+        const item = e.dropItem || 'small-bat-fang';
+        if (Math.random() < rate) spawnDrop(gs, item, e.x, e.y);
       }
     }
   }
@@ -1370,6 +1448,25 @@ function makeBat(x, y) {
     hp: ENEMY_BAT_HP, maxHp: ENEMY_BAT_HP,
     flashTimer: 0,
     alive: true,
+    type: 'bat',
+    dropItem: 'small-bat-fang',
+    dropRate: ENEMY_DROP_RATE,
+    bobPhase: Math.random() * Math.PI * 2
+  };
+}
+
+function makeCrocodile(x, y) {
+  return {
+    x, y,
+    vx: 0, vy: 0,       // knockback impulse
+    r: ENEMY_CROC_RADIUS,
+    hp: ENEMY_CROC_HP, maxHp: ENEMY_CROC_HP,
+    flashTimer: 0,
+    alive: true,
+    type: 'crocodile',
+    face: -1,           // 1 = facing right, -1 = facing left (for drawing the snout)
+    dropItem: 'crocodile-scale',
+    dropRate: 1,        // always drops a scale on death
     bobPhase: Math.random() * Math.PI * 2
   };
 }
@@ -1393,6 +1490,23 @@ function updateEnemies(gs, dt) {
     const e = gs.enemies[i];
     if (!e.alive) { gs.enemies.splice(i, 1); continue; }
     if (e.flashTimer > 0) e.flashTimer -= dt;
+    // crocodiles crawl along the ground toward the player (no flying)
+    if (e.type === 'crocodile') {
+      const groundY = H - 150;
+      const dir = (p.x >= e.x) ? 1 : -1;
+      e.face = dir;
+      e.x += dir * ENEMY_CROC_SPEED * dt;
+      e.y = groundY - e.r;            // stay glued to the floor
+      e.vx = 0; e.vy = 0;
+      // contact: bite the player, then shove the croc back so it can't hit every frame
+      if (Math.hypot(p.x - e.x, p.y - e.y) < e.r + p.radius) {
+        damagePlayer(gs, ENEMY_CROC_DAMAGE);
+        const s = (e.x >= p.x) ? 1 : -1;
+        e.x = p.x + s * (e.r + p.radius + 2);
+        e.y = groundY - e.r;
+      }
+      continue;
+    }
     // fly slowly toward the player
     let dx = p.x - e.x, dy = p.y - e.y;
     let len = Math.hypot(dx, dy);
@@ -1684,6 +1798,7 @@ async function initGame(playerName) {
     }
     // allow continuing from game-over with Space / Enter
     if (gameState && gameState.status === 'gameover' && (k === ' ' || k === 'Enter')) continueRespawn();
+    if (gameState && gameState.status === 'victory' && (k === ' ' || k === 'Enter')) restartFromChase();
     // open/close the backpack (once unlocked)
     if (k === 'z' || k === 'Z') toggleBackpack();
     // attack with the equipped weapon
@@ -1851,7 +1966,8 @@ async function initGame(playerName) {
   }
 
   // Start in the furthest scene this player already reached.
-  if (hasEnteredLevel2(playerName)) setupLevel2Scene(gameState);
+  if (hasEnteredLevel4(playerName)) setupLevel4Scene(gameState);
+  else if (hasEnteredLevel2(playerName)) setupLevel2Scene(gameState);
   else if (hasEnteredCave(playerName)) setupCaveScene(gameState);
   else setupChaseScene(gameState);
 
@@ -1957,8 +2073,13 @@ function updatePlaying(gs, dt) {
     } else if (p.x >= gs.caveX) {
       enterCave(); // reached the cave -> fade into the next scene
     }
+  } else if (gs.scene === 'cave') {
+    updateCaveScene(gs, dt);
+  } else if (gs.scene === 'level2') {
+    updateLevel2Scene(gs, dt);
+  } else if (gs.scene === 'level4') {
+    updateLevel4Scene(gs, dt);
   } else {
-    // cave scene: flat floor, floating rocks, and the boss
     updateCaveScene(gs, dt);
   }
 }
@@ -2267,6 +2388,10 @@ function drawGameScene() {
     drawContinueButton();
   }
 
+  if (gs.status === 'victory') {
+    drawVictory();
+  }
+
   // "Saving…" indicator (bottom-right) while writing to localStorage
   if (gs.savingTimer > 0) {
     gctx.font = '14px system-ui, -apple-system, "Segoe UI", Roboto, Arial';
@@ -2337,6 +2462,16 @@ function drawCenterText(text, color, size, offsetY) {
   gctx.fillText(text, W / 2, H / 2 + offsetY);
 }
 
+function drawVictory() {
+  gctx.save();
+  gctx.fillStyle = 'rgba(0,0,0,0.55)';
+  gctx.fillRect(0, 0, W, H);
+  drawCenterText('通关！', '#9be36b', 56, -42);
+  drawCenterText('你击败了鳄鱼，获得 鳄鱼鳞片', '#ffffff', 22, 10);
+  drawCenterText('按 Enter / 空格 重新开始', 'rgba(255,255,255,0.8)', 18, 50);
+  gctx.restore();
+}
+
 function roundRectPath(ctx, x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
@@ -2374,7 +2509,8 @@ function drawAdminPanel() {
   const entries = [
     { scene: 'chase', label: '关卡1 · 毒气' },
     { scene: 'cave', label: '关卡2 · 洞穴' },
-    { scene: 'level2', label: '关卡3 · 平原' }
+    { scene: 'level2', label: '关卡3 · 平原' },
+    { scene: 'level4', label: '关卡4 · 沼泽' }
   ];
   const w = 156, h = 38, gap = 10, x = 14, startY = 14;
   gs.adminButtons = [];
@@ -2426,6 +2562,7 @@ function drawEnemies(cam) {
       const blink = (Math.floor(e.flashTimer / 3) % 2) === 0;
       fill = blink ? '#ffffff' : '#5a3a28';
     }
+    if (e.type === 'crocodile') { drawCrocodile(sx, sy, e, fill); continue; }
     // body
     gctx.beginPath();
     gctx.arc(sx, sy, e.r, 0, Math.PI * 2);
@@ -2448,6 +2585,65 @@ function drawEnemies(cam) {
     gctx.fillStyle = fill;
     gctx.fill();
   }
+}
+
+// Draw the ground-crawling crocodile (faces the direction it is moving via e.face).
+function drawCrocodile(cx, cy, e, fill) {
+  gctx.save();
+  gctx.translate(cx, cy);
+  gctx.scale(e.face >= 0 ? 1 : -1, 1);
+  const r = e.r;
+  // tail
+  gctx.fillStyle = fill;
+  gctx.beginPath();
+  gctx.moveTo(-r * 0.8, 0);
+  gctx.quadraticCurveTo(-r * 1.8, -r * 0.2, -r * 2.0, r * 0.2);
+  gctx.quadraticCurveTo(-r * 1.5, r * 0.3, -r * 0.8, r * 0.2);
+  gctx.closePath();
+  gctx.fill();
+  // body
+  gctx.beginPath();
+  gctx.ellipse(0, 0, r * 1.1, r * 0.6, 0, 0, Math.PI * 2);
+  gctx.fillStyle = fill;
+  gctx.fill();
+  gctx.strokeStyle = 'rgba(15,40,20,0.8)';
+  gctx.lineWidth = 2;
+  gctx.stroke();
+  // snout (points in +x after the dir scale)
+  gctx.beginPath();
+  gctx.moveTo(r * 0.9, -r * 0.1);
+  gctx.lineTo(r * 1.7, -r * 0.05);
+  gctx.lineTo(r * 1.7, r * 0.2);
+  gctx.lineTo(r * 0.9, r * 0.25);
+  gctx.closePath();
+  gctx.fillStyle = fill;
+  gctx.fill();
+  gctx.stroke();
+  // teeth
+  gctx.fillStyle = '#f2ead8';
+  for (let i = 0; i < 3; i++) {
+    const tx = r * (1.0 + i * 0.22);
+    gctx.beginPath();
+    gctx.moveTo(tx, r * 0.22);
+    gctx.lineTo(tx + r * 0.08, r * 0.42);
+    gctx.lineTo(tx + r * 0.16, r * 0.22);
+    gctx.closePath();
+    gctx.fill();
+  }
+  // eye
+  gctx.fillStyle = '#ffd23f';
+  gctx.beginPath();
+  gctx.arc(r * 0.45, -r * 0.25, r * 0.12, 0, Math.PI * 2);
+  gctx.fill();
+  gctx.fillStyle = '#111';
+  gctx.beginPath();
+  gctx.arc(r * 0.45, -r * 0.25, r * 0.05, 0, Math.PI * 2);
+  gctx.fill();
+  // legs
+  gctx.fillStyle = fill;
+  gctx.fillRect(-r * 0.3, r * 0.5, r * 0.25, r * 0.35);
+  gctx.fillRect(r * 0.4, r * 0.5, r * 0.25, r * 0.35);
+  gctx.restore();
 }
 
 function drawItemGlyph(x, y, itemId, r) {
