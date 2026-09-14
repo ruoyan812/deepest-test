@@ -68,6 +68,11 @@ export async function ensureTable(context) {
           created_at   INTEGER NOT NULL
         )`
   }]);
+  // Add the progress column for existing deployments (ALTER fails silently if
+  // the column already exists).
+  try {
+    await turso(context, [{ q: 'ALTER TABLE users ADD COLUMN progress TEXT' }]);
+  } catch (e) { /* column already present */ }
 }
 
 export function constantTimeEqual(a, b) {

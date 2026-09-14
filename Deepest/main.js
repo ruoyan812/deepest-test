@@ -683,6 +683,7 @@ async function handleRegister() {
   try {
     // Derive the password hash locally (plaintext never leaves the browser)…
     const hash = await derivePasswordHash(pass, salt, iterations);
+    _sessionHash = hash;
 
     if (await backendAvailable()) {
       // …then store it in the Turso-backed database via the backend API.
@@ -760,6 +761,10 @@ async function handleLogin() {
         return;
       }
       setCurrentPlayer(name);
+      _sessionHash = recomputed;
+      // pull cloud progress so this account plays the same game on any device
+      const prog = await loadServerProgress(name);
+      applyServerProgress(name, prog);
       onAuthSuccess(name, true);
     } else {
       // No server (e.g. GitHub Pages) → read from local browser storage.
@@ -953,6 +958,67 @@ function savePlayerInfo(gs) {
   });
 }
 
+// ----- Cloud progress sync (Turso) -----
+// The (locally-derived) password hash is kept so we can authenticate writes to
+// the server without ever sending the plaintext password.
+let _sessionHash = null;
+
+// Furthest scene this player has reached, based on the local "entered" flags.
+function currentReachedScene(name) {
+  if (hasEnteredLevel4(name)) return 'level4';
+  if (hasEnteredLevel2(name)) return 'level2';
+  if (hasEnteredCave(name)) return 'cave';
+  return 'chase';
+}
+
+// Pull saved progress from the cloud (returns null when offline / no backend).
+async function loadServerProgress(name) {
+  if (!(await backendAvailable())) return null;
+  try {
+    const res = await fetch('/api/progress?name=' + encodeURIComponent(normalizeName(name)));
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => ({}));
+    return data.progress || null;
+  } catch (e) { console.warn('load progress failed', e); return null; }
+}
+
+// Seed the local store (inventory + reached-scene flags) from the cloud so the
+// same account keeps the same progress on any device/browser.
+function applyServerProgress(name, progress) {
+  if (!progress) return;
+  saveInventory(name, {
+    inventory: progress.inventory || {},
+    weaponSlot: progress.weaponSlot || null,
+    backpackUnlocked: !!progress.backpackUnlocked
+  });
+  const reached = progress.reached || 'chase';
+  if (reached === 'cave' || reached === 'level2' || reached === 'level4') setEnteredCave(name);
+  if (reached === 'level2' || reached === 'level4') setEnteredLevel2(name);
+  if (reached === 'level4') setEnteredLevel4(name);
+}
+
+// Push the current game progress to the cloud. Called whenever a level is cleared
+// (or saved at a campfire) so the account's progress is mirrored on the server.
+async function saveServerProgress() {
+  const gs = gameState;
+  if (!gs || !_sessionHash) return;
+  if (!(await backendAvailable())) return; // local (no-backend) accounts stay local
+  const name = gs.player.name;
+  const progress = {
+    inventory: gs.inventory || {},
+    weaponSlot: gs.weaponSlot || null,
+    backpackUnlocked: !!gs.backpackUnlocked,
+    reached: currentReachedScene(name)
+  };
+  try {
+    await fetch('/api/progress', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: normalizeName(name), hash: _sessionHash, progress })
+    });
+  } catch (e) { console.warn('save progress failed', e); }
+}
+
 const FADE_SPEED = 0.04; // scene-transition fade speed (per 60fps frame)
 
 // Reconfigure the game for the cave scene: flat floor, floating rocks, and a boss.
@@ -1078,6 +1144,7 @@ function enterCave() {
   const gs = gameState;
   if (gs.status !== 'playing' || gs.fade) return;
   setEnteredCave(gs.player.name);
+  saveServerProgress();
   gs.fade = { alpha: 0, dir: 1, action: 'to-cave' };
 }
 
@@ -1104,6 +1171,7 @@ function enterNextLevel() {
   const gs = gameState;
   if (gs.status !== 'playing' || gs.fade) return;
   setEnteredLevel2(gs.player.name);
+  saveServerProgress();
   gs.fade = { alpha: 0, dir: 1, action: 'to-level2' };
 }
 
@@ -1112,6 +1180,7 @@ function enterLevel4() {
   const gs = gameState;
   if (gs.status !== 'playing' || gs.fade) return;
   setEnteredLevel4(gs.player.name);
+  saveServerProgress();
   gs.fade = { alpha: 0, dir: 1, action: 'to-level4' };
 }
 
@@ -1129,6 +1198,7 @@ function saveAtCampfire() {
   if (!isNearCampfire(gs)) return;
   setEnteredLevel2(gs.player.name);
   savePlayerInfo(gs);
+  saveServerProgress();
   flashSaving(gs);
   gs.pickups.push({ text: '已存档', timer: 90 });
   gs.healing = true;  // start refilling HP to full
@@ -1245,6 +1315,7 @@ function updateLevel2Scene(gs, dt) {
 function updateLevel4Scene(gs, dt) {
   updateEnemies(gs, dt);
   if (gs.enemies.length === 0 && gs.inventory['crocodile-scale'] && gs.status === 'playing' && !gs.fade) {
+    saveServerProgress(); // persist the full clear (incl. the collected scale)
     gs.status = 'victory';
     gs.statusTimer = 0;
   }
