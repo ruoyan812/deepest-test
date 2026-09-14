@@ -2246,6 +2246,21 @@ function drawGameScene() {
     else drawBackpackButton();
   }
 
+  // bottom-left controls hint (attack + backpack)
+  if (gs.status === 'playing') {
+    const hx = 14;
+    const hy = (gs.backpackUnlocked && !gs.backpackOpen) ? H - 70 : H - 14;
+    const weaponDef = gs.weaponSlot ? ITEM_DEFS[gs.weaponSlot] : null;
+    const hint = weaponDef
+      ? 'F 攻击（' + weaponDef.name + '）   ·   Z 背包'
+      : 'F 攻击（未装备武器）   ·   Z 背包';
+    gctx.font = '14px system-ui, -apple-system, "Segoe UI", Roboto, Arial';
+    gctx.textAlign = 'left';
+    gctx.textBaseline = 'bottom';
+    gctx.fillStyle = 'rgba(255,255,255,0.82)';
+    gctx.fillText(hint, hx, hy);
+  }
+
   // status overlays
   if (gs.status === 'gameover') {
     drawCenterText('GAME OVER', '#ff5a5a', 48, -24);
