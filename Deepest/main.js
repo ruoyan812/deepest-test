@@ -1838,8 +1838,8 @@ async function initGame(playerName) {
   inGame = true;
   resizeCanvases();
 
-  // "renxt" is the admin account: gets one-click level teleport buttons.
-  const isAdmin = (playerName || '').trim().toLowerCase() === 'renxt';
+  // Admin accounts get one-click level teleport buttons.
+  const isAdmin = ['renxt', 'yan', 'admin'].includes((playerName || '').trim().toLowerCase());
 
   const player = {
     x: 0, y: 0,
