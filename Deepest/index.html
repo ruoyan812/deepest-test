@@ -13,6 +13,7 @@
     .overlay { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; z-index:2; pointer-events:auto; user-select:none; }
     .title { font-weight:800; font-size:clamp(48px,12vw,120px); text-align:center; margin:0; color:#fff; line-height:0.95; }
     .hint { margin-top:12px; color:#ddd; font-size:clamp(14px,2.6vw,22px); animation:subtlePulse 2s ease-in-out infinite; }
+    .copyright { position:fixed; left:0; right:0; bottom:12px; text-align:center; color:#9aa; font-size:13px; z-index:2; }
     @keyframes subtlePulse { 0%{transform:translateY(0);opacity:0.95}50%{transform:translateY(4px);opacity:0.6}100%{transform:translateY(0);opacity:0.95} }
     .fade-out { opacity:0; pointer-events:none; transition:opacity .6s ease; }
     /* Auth panel */
@@ -44,6 +45,7 @@
   <div id="startOverlay" class="overlay" role="button" aria-label="Start Deepest. Press Space to start or click to start.">
     <h1 class="title">Deepest</h1>
     <div class="hint">press space to start</div>
+    <div class="copyright">刃XT 2026 · Yanverse 2013 - 2026</div>
   </div>
 
   <!-- Auth panel (hidden initially) -->
