@@ -548,7 +548,15 @@ function startPressed() {
   if (started) return;
   started = true;
   fadeOutStartOverlay();
-  showAuthMenu();
+  const saved = localStorage.getItem(CURRENT_KEY);
+  if (saved) {
+    // 已登录：直接进入游戏，保持登录状态。
+    if (authPanel && authPanel.parentNode) authPanel.parentNode.removeChild(authPanel);
+    initGame(saved);
+    showLogoutButton();
+  } else {
+    showAuthMenu();
+  }
 }
 window.addEventListener('keydown', (e) => {
   if (!started && (e.code === 'Space' || e.key === ' ' || e.keyCode === 32)) {
@@ -567,6 +575,29 @@ const DEFAULT_PBKDF2_ITERATIONS = 100000;
 function loadPlayers() { try { const raw = localStorage.getItem(STORAGE_KEY); return raw ? JSON.parse(raw) : {}; } catch (e) { console.warn(e); return {}; } }
 function savePlayers(map) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(map)); } catch (e) { console.error(e); } }
 function setCurrentPlayer(name) { try { localStorage.setItem(CURRENT_KEY, name); } catch (e) { } }
+
+// 退出登录：清除当前账号并刷新回登录界面（需重新登录）。
+function logout() {
+  try { if (typeof gameState !== 'undefined' && gameState) savePlayerInfo(gameState); } catch (e) {}
+  try { localStorage.removeItem(CURRENT_KEY); } catch (e) {}
+  const btn = document.getElementById('logoutBtn');
+  if (btn) btn.remove();
+  location.reload();
+}
+
+// 游戏内右上角的「退出登录」按钮，点击才会退出登录。
+function showLogoutButton() {
+  let btn = document.getElementById('logoutBtn');
+  if (!btn) {
+    btn = document.createElement('button');
+    btn.id = 'logoutBtn';
+    btn.textContent = '退出登录';
+    btn.style.cssText = 'position:fixed;top:12px;right:12px;z-index:9999;padding:8px 14px;border:none;border-radius:8px;background:#c0392b;color:#fff;font:14px sans-serif;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.3)';
+    btn.addEventListener('click', logout);
+    document.body.appendChild(btn);
+  }
+  btn.style.display = 'block';
+}
 function normalizeName(n) { return (n || '').trim().toLowerCase(); }
 function arrayBufferToBase64(buffer) { const bytes = new Uint8Array(buffer); let binary = ''; for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]); return btoa(binary); }
 function base64ToUint8Array(base64) { const binary = atob(base64); const len = binary.length; const bytes = new Uint8Array(len); for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i); return bytes; }
@@ -806,6 +837,7 @@ function onAuthSuccess(playerName, wasLogin) {
     setTimeout(() => { if (authPanel && authPanel.parentNode) authPanel.parentNode.removeChild(authPanel); }, 700);
     // start the game (initGame handles intro overlay)
     initGame(playerName);
+    showLogoutButton();
   }, 600);
 }
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
