@@ -622,7 +622,7 @@ async function openAdminPanel() {
     overlay = document.createElement('div');
     overlay.id = 'adminOverlay';
     overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.5)';
-    overlay.innerHTML = '<div style="background:#fff;border-radius:12px;width:min(460px,92vw);max-height:86vh;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.35)">' +
+    overlay.innerHTML = '<div style="background:#fff;color:#111;border-radius:12px;width:min(460px,92vw);max-height:86vh;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.35)">' +
       '<div style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid #eee">' +
       '<h3 style="margin:0">用户管理</h3>' +
       '<button id="adminClose" style="border:none;background:#eee;border-radius:8px;padding:6px 12px;cursor:pointer">关闭</button></div>' +
