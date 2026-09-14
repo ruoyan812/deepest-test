@@ -44,7 +44,6 @@ export async function onRequestPost(context) {
   if (auth.error) return auth.error;
   const { action, target } = auth.body;
   const key = normalizeName(target);
-  if (!key) return json({ error: 'Missing target.' }, 400);
 
   if (action === 'list') {
     const res = await turso(context, [{
@@ -58,6 +57,11 @@ export async function onRequestPost(context) {
     }));
     return json({ users });
   }
+
+  // 除 list 外，删除/重置/设管理员都需要明确的目标用户。
+  if (!key) return json({ error: 'Missing target.' }, 400);
+
+
 
   if (action === 'delete') {
     // remove the account and its cloud progress together
