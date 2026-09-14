@@ -1479,9 +1479,10 @@ function damageBoss(gs, amount) {
 }
 
 // Resolve a weapon swing: any enemy in front of the player, within range, flashes + loses HP.
-function attackHitEnemies(gs, range, damage) {
+function attackHitEnemies(gs, range, damage, weaponId) {
   const p = gs.player;
   const b = gs.boss;
+  const isScale = weaponId === 'crocodile-scale'; // 鳄鱼鳞片
   if (b && b.appeared && b.state !== 'dying' && b.state !== 'gone') {
     const dx = b.x - p.x;
     const inFront = (p.face > 0) ? dx >= -b.r : dx <= b.r;
@@ -1496,7 +1497,10 @@ function attackHitEnemies(gs, range, damage) {
     const inFront = (p.face > 0) ? dx >= -e.r : dx <= e.r;
     if (!inFront) continue;
     if (Math.hypot(dx, e.y - p.y) <= range + e.r) {
-      e.hp -= damage;
+      let dmg = damage;
+      if (isScale && e.type === 'bat') dmg = e.hp; // 鳄鱼鳞片秒杀蝙蝠
+      else if (isScale && e.type === 'crocodile') dmg = ENEMY_CROC_HP / 2; // 鳞片两次击杀鳄鱼(30HP)
+      e.hp -= dmg;
       e.flashTimer = 15;
       const len = Math.hypot(dx, e.y - p.y) || 1;
       e.vx = (dx / len) * ENEMY_KNOCKBACK;
@@ -1666,7 +1670,7 @@ function tryAttack() {
   const damage = def.damage || 0;
   gs.attack = { timer: ATTACK_DURATION, duration: ATTACK_DURATION, dir: gs.player.face, range };
   // resolve the hit immediately: enemies in front, within range, take damage + flash
-  attackHitEnemies(gs, range, damage);
+  attackHitEnemies(gs, range, damage, itemId);
 }
 
 // ----- Cave drawing -----
