@@ -73,6 +73,11 @@ export async function ensureTable(context) {
   try {
     await turso(context, [{ q: 'ALTER TABLE users ADD COLUMN progress TEXT' }]);
   } catch (e) { /* column already present */ }
+  // Add the is_admin flag for existing deployments (ALTER fails silently if
+  // the column already exists).
+  try {
+    await turso(context, [{ q: 'ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0' }]);
+  } catch (e) { /* column already present */ }
 }
 
 export function constantTimeEqual(a, b) {

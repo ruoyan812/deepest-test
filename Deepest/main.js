@@ -554,6 +554,7 @@ async function startPressed() {
     if (authPanel && authPanel.parentNode) authPanel.parentNode.removeChild(authPanel);
     const prog = await loadServerProgress(saved);
     applyServerProgress(saved, prog);
+    await loadAdminStatus(saved);
     initGame(saved);
     showLogoutButton();
   } else {
@@ -584,7 +585,110 @@ function logout() {
   try { localStorage.removeItem(CURRENT_KEY); } catch (e) {}
   const btn = document.getElementById('logoutBtn');
   if (btn) btn.remove();
+  const ab = document.getElementById('adminBtn');
+  if (ab) ab.remove();
   location.reload();
+}
+
+// ----------------- Admin panel (managers only) -----------------
+function showAdminButton() {
+  if (!gameState || !gameState.isAdmin) return;
+  let btn = document.getElementById('adminBtn');
+  if (!btn) {
+    btn = document.createElement('button');
+    btn.id = 'adminBtn';
+    btn.textContent = '管理面板';
+    btn.style.cssText = 'position:fixed;top:12px;right:116px;z-index:9999;padding:8px 14px;border:none;border-radius:8px;background:#2c3e50;color:#fff;font:14px sans-serif;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.3)';
+    btn.addEventListener('click', openAdminPanel);
+    document.body.appendChild(btn);
+  }
+  btn.style.display = 'block';
+}
+
+// 以管理员身份调用 /api/admin。
+async function adminApi(action, payload) {
+  const body = Object.assign({ caller: normalizeName(gameState.player.name), hash: _sessionHash, action }, payload || {});
+  try {
+    const res = await fetch('/api/admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    return await res.json().catch(() => ({}));
+  } catch (e) { return { error: String(e) }; }
+}
+
+async function openAdminPanel() {
+  if (!gameState || !gameState.isAdmin) return;
+  if (!(await backendAvailable())) { alert('需要后端服务才能管理用户。'); return; }
+  let overlay = document.getElementById('adminOverlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'adminOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.5)';
+    overlay.innerHTML = '<div style="background:#fff;border-radius:12px;width:min(460px,92vw);max-height:86vh;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.35)">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid #eee">' +
+      '<h3 style="margin:0">用户管理</h3>' +
+      '<button id="adminClose" style="border:none;background:#eee;border-radius:8px;padding:6px 12px;cursor:pointer">关闭</button></div>' +
+      '<div id="adminUserList" style="padding:6px 18px 18px"></div></div>';
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeAdminPanel(); });
+    document.getElementById('adminClose').addEventListener('click', closeAdminPanel);
+  }
+  overlay.style.display = 'flex';
+  const listEl = document.getElementById('adminUserList');
+  listEl.innerHTML = '<div style="padding:18px;color:#666">加载中…</div>';
+  const data = await adminApi('list', {});
+  if (!data.users) { listEl.innerHTML = '<div style="padding:18px;color:#c0392b">加载失败：' + (data.error || '未知错误') + '</div>'; return; }
+  renderAdminList(data.users);
+}
+
+function renderAdminList(users) {
+  const listEl = document.getElementById('adminUserList');
+  if (!listEl) return;
+  listEl.innerHTML = '';
+  for (const u of users) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 6px;border-bottom:1px solid #eee';
+    const name = document.createElement('div');
+    name.style.cssText = 'flex:1;font-weight:600';
+    name.textContent = u.displayName + (u.isAdmin ? ' （管理员）' : '');
+    const adminToggle = document.createElement('button');
+    adminToggle.textContent = u.isAdmin ? '取消管理员' : '设为管理员';
+    adminToggle.style.cssText = 'padding:6px 10px;border:none;border-radius:6px;background:' + (u.isAdmin ? '#7f8c8d' : '#27ae60') + ';color:#fff;cursor:pointer';
+    adminToggle.addEventListener('click', async () => {
+      const r = await adminApi('setAdmin', { target: u.name, value: u.isAdmin ? 0 : 1 });
+      if (r.ok) renderAdminListAfterRefresh(); else alert('操作失败：' + (r.error || '未知错误'));
+    });
+    const reset = document.createElement('button');
+    reset.textContent = '重置密码';
+    reset.style.cssText = 'padding:6px 10px;border:none;border-radius:6px;background:#2980b9;color:#fff;cursor:pointer';
+    reset.addEventListener('click', async () => {
+      const np = prompt('为 “' + u.displayName + '” 设置新密码：');
+      if (!np) return;
+      const salt = generateSalt();
+      const iterations = DEFAULT_PBKDF2_ITERATIONS;
+      const hash = await derivePasswordHash(np, salt, iterations);
+      const r = await adminApi('reset', { target: u.name, salt: salt, hash: hash, iterations: iterations });
+      if (r.ok) alert('密码已重置。'); else alert('重置失败：' + (r.error || '未知错误'));
+    });
+    const del = document.createElement('button');
+    del.textContent = '删除';
+    del.style.cssText = 'padding:6px 10px;border:none;border-radius:6px;background:#c0392b;color:#fff;cursor:pointer';
+    del.addEventListener('click', async () => {
+      if (!confirm('确定删除用户 “' + u.displayName + '” 吗？该操作不可恢复（含其云端进度）。')) return;
+      const r = await adminApi('delete', { target: u.name });
+      if (r.ok) renderAdminListAfterRefresh(); else alert('删除失败：' + (r.error || '未知错误'));
+    });
+    row.appendChild(name); row.appendChild(adminToggle); row.appendChild(reset); row.appendChild(del);
+    listEl.appendChild(row);
+  }
+}
+
+async function renderAdminListAfterRefresh() {
+  const data = await adminApi('list', {});
+  if (data.users) renderAdminList(data.users);
+}
+
+function closeAdminPanel() {
+  const overlay = document.getElementById('adminOverlay');
+  if (overlay) overlay.style.display = 'none';
 }
 
 // 游戏内右上角的「退出登录」按钮，点击才会退出登录。
@@ -798,6 +902,7 @@ async function handleLogin() {
       // pull cloud progress so this account plays the same game on any device
       const prog = await loadServerProgress(name);
       applyServerProgress(name, prog);
+      await loadAdminStatus(name);
       onAuthSuccess(name, true);
     } else {
       // No server (e.g. GitHub Pages) → read from local browser storage.
@@ -996,6 +1101,7 @@ function savePlayerInfo(gs) {
 // The (locally-derived) password hash is kept so we can authenticate writes to
 // the server without ever sending the plaintext password.
 let _sessionHash = null;
+let _isAdmin = false; // 当前账号是否为数据库中的管理员（由 /api/admin 读取）
 
 // Furthest scene this player has reached, based on the local "entered" flags.
 function currentReachedScene(name) {
@@ -1014,6 +1120,18 @@ async function loadServerProgress(name) {
     const data = await res.json().catch(() => ({}));
     return data.progress || null;
   } catch (e) { console.warn('load progress failed', e); return null; }
+}
+
+// 从服务器读取当前账号是否为管理员，并设置模块级 _isAdmin（供 initGame 启用管理功能）。
+async function loadAdminStatus(name) {
+  if (!(await backendAvailable())) return false;
+  try {
+    const res = await fetch('/api/admin?caller=' + encodeURIComponent(normalizeName(name)) + '&hash=' + encodeURIComponent(_sessionHash || ''));
+    if (!res.ok) return false;
+    const data = await res.json().catch(() => ({}));
+    _isAdmin = !!data.isAdmin;
+    return _isAdmin;
+  } catch (e) { console.warn('load admin status failed', e); return false; }
 }
 
 // Seed the local store (inventory + reached-scene flags) from the cloud so the
@@ -1878,7 +1996,9 @@ async function initGame(playerName) {
   resizeCanvases();
 
   // Admin accounts get one-click level teleport buttons.
-  const isAdmin = ['renxt', 'yan', 'admin'].includes((playerName || '').trim().toLowerCase());
+  // 管理员状态由数据库驱动（通过管理面板设置），硬编码种子账号作为兜底。
+  const seedAdmins = ['renxt', 'yan', 'admin'];
+  const isAdmin = _isAdmin || seedAdmins.includes((playerName || '').trim().toLowerCase());
 
   const player = {
     x: 0, y: 0,
@@ -2066,6 +2186,8 @@ async function initGame(playerName) {
       this.running = false;
     }
   };
+
+  showAdminButton(); // 管理员账户显示「管理面板」按钮
 
   // restore saved inventory / backpack / equipped weapon
   const savedInfo = loadInventory(playerName);
