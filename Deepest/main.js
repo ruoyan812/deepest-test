@@ -544,14 +544,16 @@ function fadeOutStartOverlay() {
   }, 700);
 }
 
-function startPressed() {
+async function startPressed() {
   if (started) return;
   started = true;
   fadeOutStartOverlay();
   const saved = localStorage.getItem(CURRENT_KEY);
   if (saved) {
-    // 已登录：直接进入游戏，保持登录状态。
+    // 已登录：拉取云端装备/进度后直接进入游戏，保持登录状态。
     if (authPanel && authPanel.parentNode) authPanel.parentNode.removeChild(authPanel);
+    const prog = await loadServerProgress(saved);
+    applyServerProgress(saved, prog);
     initGame(saved);
     showLogoutButton();
   } else {
@@ -1682,6 +1684,7 @@ function pickUpItem(gs, itemId) {
   gs.inventory[itemId] = (gs.inventory[itemId] || 0) + 1;
   if (!gs.backpackUnlocked) gs.backpackUnlocked = true;
   gs.pickups.push({ text: def.name + '（' + itemCategoryLabel(def.category) + '）', timer: 150 });
+  saveServerProgress(); // mirror the new gear to the cloud immediately
 }
 
 function toggleBackpack() {
