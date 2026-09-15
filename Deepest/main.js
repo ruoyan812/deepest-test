@@ -2563,7 +2563,7 @@ async function initGame(playerName) {
     wall: null, wallX: 0,
     isAdmin, adminButtons: [],
     drops: [], inventory: {}, weaponSlot: null,
-    backpackUnlocked: false, backpackOpen: false,
+    backpackUnlocked: true, backpackOpen: false,
     pickups: [], backpackBtnRect: null, weaponSlotRect: null, backpackItemRects: [], dragState: null,
     attack: null,
     enemies: [], campfire: null, healing: false,
@@ -2591,7 +2591,7 @@ async function initGame(playerName) {
   if (savedInfo) {
     gameState.inventory = savedInfo.inventory || {};
     gameState.weaponSlot = savedInfo.weaponSlot || null;
-    gameState.backpackUnlocked = !!(savedInfo.backpackUnlocked || Object.keys(gameState.inventory).length);
+    gameState.backpackUnlocked = true;
   }
 
   // Start in the furthest scene this player already reached.
