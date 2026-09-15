@@ -252,7 +252,7 @@ function particlesLoop(now) {
   if (inGame) {
     // in-game: ruins background in the chase scene, plain background in the cave
     const scene = (window.DeepestGame && window.DeepestGame.scene) || 'chase';
-    if (scene === 'cave' || scene === 'level2') {
+    if (scene === 'cave' || scene === 'level2' || scene === 'village' || scene === 'depths' || scene === 'upper') {
       drawCaveParallax(pctx);
     } else {
       const cameraX = (window.DeepestGame && window.DeepestGame.cameraX) || 0;
@@ -544,22 +544,11 @@ function fadeOutStartOverlay() {
   }, 700);
 }
 
-async function startPressed() {
+function startPressed() {
   if (started) return;
   started = true;
   fadeOutStartOverlay();
-  const saved = localStorage.getItem(CURRENT_KEY);
-  if (saved) {
-    // 已登录：拉取云端装备/进度后直接进入游戏，保持登录状态。
-    if (authPanel && authPanel.parentNode) authPanel.parentNode.removeChild(authPanel);
-    const prog = await loadServerProgress(saved);
-    applyServerProgress(saved, prog);
-    await loadAdminStatus(saved);
-    initGame(saved);
-    showLogoutButton();
-  } else {
-    showAuthMenu();
-  }
+  showAuthMenu();
 }
 window.addEventListener('keydown', (e) => {
   if (!started && (e.code === 'Space' || e.key === ' ' || e.keyCode === 32)) {
@@ -578,132 +567,6 @@ const DEFAULT_PBKDF2_ITERATIONS = 100000;
 function loadPlayers() { try { const raw = localStorage.getItem(STORAGE_KEY); return raw ? JSON.parse(raw) : {}; } catch (e) { console.warn(e); return {}; } }
 function savePlayers(map) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(map)); } catch (e) { console.error(e); } }
 function setCurrentPlayer(name) { try { localStorage.setItem(CURRENT_KEY, name); } catch (e) { } }
-
-// 退出登录：清除当前账号并刷新回登录界面（需重新登录）。
-function logout() {
-  try { if (typeof gameState !== 'undefined' && gameState) savePlayerInfo(gameState); } catch (e) {}
-  try { localStorage.removeItem(CURRENT_KEY); } catch (e) {}
-  const btn = document.getElementById('logoutBtn');
-  if (btn) btn.remove();
-  const ab = document.getElementById('adminBtn');
-  if (ab) ab.remove();
-  location.reload();
-}
-
-// ----------------- Admin panel (managers only) -----------------
-function showAdminButton() {
-  if (!gameState || !gameState.isAdmin) return;
-  let btn = document.getElementById('adminBtn');
-  if (!btn) {
-    btn = document.createElement('button');
-    btn.id = 'adminBtn';
-    btn.textContent = '管理面板';
-    btn.style.cssText = 'position:fixed;top:12px;right:116px;z-index:9999;padding:8px 14px;border:none;border-radius:8px;background:#2c3e50;color:#fff;font:14px sans-serif;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.3)';
-    btn.addEventListener('click', openAdminPanel);
-    document.body.appendChild(btn);
-  }
-  btn.style.display = 'block';
-}
-
-// 以管理员身份调用 /api/admin。
-async function adminApi(action, payload) {
-  const body = Object.assign({ caller: normalizeName(gameState.player.name), hash: _sessionHash, action }, payload || {});
-  try {
-    const res = await fetch('/api/admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    return await res.json().catch(() => ({}));
-  } catch (e) { return { error: String(e) }; }
-}
-
-async function openAdminPanel() {
-  if (!gameState || !gameState.isAdmin) return;
-  if (!(await backendAvailable())) { alert('需要后端服务才能管理用户。'); return; }
-  let overlay = document.getElementById('adminOverlay');
-  if (!overlay) {
-    overlay = document.createElement('div');
-    overlay.id = 'adminOverlay';
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.5)';
-    overlay.innerHTML = '<div style="background:#fff;color:#111;border-radius:12px;width:min(460px,92vw);max-height:86vh;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.35)">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid #eee">' +
-      '<h3 style="margin:0">用户管理</h3>' +
-      '<button id="adminClose" style="border:none;background:#eee;border-radius:8px;padding:6px 12px;cursor:pointer">关闭</button></div>' +
-      '<div id="adminUserList" style="padding:6px 18px 18px"></div></div>';
-    document.body.appendChild(overlay);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeAdminPanel(); });
-    document.getElementById('adminClose').addEventListener('click', closeAdminPanel);
-  }
-  overlay.style.display = 'flex';
-  const listEl = document.getElementById('adminUserList');
-  listEl.innerHTML = '<div style="padding:18px;color:#666">加载中…</div>';
-  const data = await adminApi('list', {});
-  if (!data.users) { listEl.innerHTML = '<div style="padding:18px;color:#c0392b">加载失败：' + (data.error || '未知错误') + '</div>'; return; }
-  renderAdminList(data.users);
-}
-
-function renderAdminList(users) {
-  const listEl = document.getElementById('adminUserList');
-  if (!listEl) return;
-  listEl.innerHTML = '';
-  for (const u of users) {
-    const row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 6px;border-bottom:1px solid #eee';
-    const name = document.createElement('div');
-    name.style.cssText = 'flex:1;font-weight:600';
-    name.textContent = u.displayName + (u.isAdmin ? ' （管理员）' : '');
-    const adminToggle = document.createElement('button');
-    adminToggle.textContent = u.isAdmin ? '取消管理员' : '设为管理员';
-    adminToggle.style.cssText = 'padding:6px 10px;border:none;border-radius:6px;background:' + (u.isAdmin ? '#7f8c8d' : '#27ae60') + ';color:#fff;cursor:pointer';
-    adminToggle.addEventListener('click', async () => {
-      const r = await adminApi('setAdmin', { target: u.name, value: u.isAdmin ? 0 : 1 });
-      if (r.ok) renderAdminListAfterRefresh(); else alert('操作失败：' + (r.error || '未知错误'));
-    });
-    const reset = document.createElement('button');
-    reset.textContent = '重置密码';
-    reset.style.cssText = 'padding:6px 10px;border:none;border-radius:6px;background:#2980b9;color:#fff;cursor:pointer';
-    reset.addEventListener('click', async () => {
-      const np = prompt('为 “' + u.displayName + '” 设置新密码：');
-      if (!np) return;
-      const salt = generateSalt();
-      const iterations = DEFAULT_PBKDF2_ITERATIONS;
-      const hash = await derivePasswordHash(np, salt, iterations);
-      const r = await adminApi('reset', { target: u.name, salt: salt, hash: hash, iterations: iterations });
-      if (r.ok) alert('密码已重置。'); else alert('重置失败：' + (r.error || '未知错误'));
-    });
-    const del = document.createElement('button');
-    del.textContent = '删除';
-    del.style.cssText = 'padding:6px 10px;border:none;border-radius:6px;background:#c0392b;color:#fff;cursor:pointer';
-    del.addEventListener('click', async () => {
-      if (!confirm('确定删除用户 “' + u.displayName + '” 吗？该操作不可恢复（含其云端进度）。')) return;
-      const r = await adminApi('delete', { target: u.name });
-      if (r.ok) renderAdminListAfterRefresh(); else alert('删除失败：' + (r.error || '未知错误'));
-    });
-    row.appendChild(name); row.appendChild(adminToggle); row.appendChild(reset); row.appendChild(del);
-    listEl.appendChild(row);
-  }
-}
-
-async function renderAdminListAfterRefresh() {
-  const data = await adminApi('list', {});
-  if (data.users) renderAdminList(data.users);
-}
-
-function closeAdminPanel() {
-  const overlay = document.getElementById('adminOverlay');
-  if (overlay) overlay.style.display = 'none';
-}
-
-// 游戏内右上角的「退出登录」按钮，点击才会退出登录。
-function showLogoutButton() {
-  let btn = document.getElementById('logoutBtn');
-  if (!btn) {
-    btn = document.createElement('button');
-    btn.id = 'logoutBtn';
-    btn.textContent = '退出登录';
-    btn.style.cssText = 'position:fixed;top:12px;right:12px;z-index:9999;padding:8px 14px;border:none;border-radius:8px;background:#c0392b;color:#fff;font:14px sans-serif;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.3)';
-    btn.addEventListener('click', logout);
-    document.body.appendChild(btn);
-  }
-  btn.style.display = 'block';
-}
 function normalizeName(n) { return (n || '').trim().toLowerCase(); }
 function arrayBufferToBase64(buffer) { const bytes = new Uint8Array(buffer); let binary = ''; for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]); return btoa(binary); }
 function base64ToUint8Array(base64) { const binary = atob(base64); const len = binary.length; const bytes = new Uint8Array(len); for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i); return bytes; }
@@ -784,21 +647,6 @@ function clearBusyOnButtons(primaryButton, otherButton) {
   if (otherButton) otherButton.disabled = false;
 }
 
-// Detect whether an account backend is reachable by probing a lightweight
-// health endpoint. This works for the local Node server AND Cloudflare Pages
-// Functions (both answer /api/health with 200). When there is no backend
-// (e.g. a plain file:// open, or a static host without Functions) we fall
-// back to browser-local (localStorage) accounts. The result is cached.
-let _backendProbe = null;
-function backendAvailable() {
-  if (_backendProbe === null) {
-    _backendProbe = fetch('/api/health', { method: 'GET', cache: 'no-store' })
-      .then((r) => r.ok)
-      .catch(() => false);
-  }
-  return _backendProbe;
-}
-
 async function handleRegister() {
   const nameEl = document.getElementById('regName');
   const passEl = document.getElementById('regPass');
@@ -813,47 +661,27 @@ async function handleRegister() {
   if (!name) { errEl.textContent = 'Please enter a name.'; nameEl.focus(); return; }
   if (!pass || pass.length < 1) { errEl.textContent = 'Please enter a password.'; passEl.focus(); return; }
 
+  const players = loadPlayers();
+  const key = normalizeName(name);
+  if (players[key]) {
+    errEl.textContent = 'That name is already taken — please choose another name.';
+    nameEl.focus();
+    return;
+  }
+
   showBusyOnButtons(startBtn, backBtn, 'Registering...');
 
   const salt = generateSalt();
   const iterations = DEFAULT_PBKDF2_ITERATIONS;
   try {
-    // Derive the password hash locally (plaintext never leaves the browser)…
     const hash = await derivePasswordHash(pass, salt, iterations);
-    _sessionHash = hash;
-
-    if (await backendAvailable()) {
-      // …then store it in the Turso-backed database via the backend API.
-      const res = await fetch('/api/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name, salt: salt, hash: hash, iterations: iterations })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        errEl.textContent = data.error || 'Registration failed. Please try again.';
-        clearBusyOnButtons(startBtn, backBtn);
-        return;
-      }
-      setCurrentPlayer(name);
-      onAuthSuccess(name, false);
-    } else {
-      // No server (e.g. GitHub Pages) → fall back to local browser storage.
-      const players = loadPlayers();
-      const key = normalizeName(name);
-      if (players[key]) {
-        errEl.textContent = 'That name is already taken — please choose another name.';
-        clearBusyOnButtons(startBtn, backBtn);
-        return;
-      }
-      players[key] = { name: name, salt: salt, hash: hash, iterations: iterations };
-      savePlayers(players);
-      setCurrentPlayer(name);
-      onAuthSuccess(name, false);
-    }
+    players[key] = { name: name, salt: salt, hash: hash, iterations: iterations };
+    savePlayers(players);
+    setCurrentPlayer(name);
+    onAuthSuccess(name, false);
   } catch (err) {
-    console.error('Error during registration', err);
-    errEl.textContent = 'Could not reach the server. Please try again.';
+    console.error('Error deriving password hash', err);
+    errEl.textContent = 'An unexpected error occurred. Please try again.';
     clearBusyOnButtons(startBtn, backBtn);
   }
 }
@@ -872,61 +700,30 @@ async function handleLogin() {
   if (!name) { errEl.textContent = 'Please enter your name.'; nameEl.focus(); return; }
   if (!pass) { errEl.textContent = 'Please enter your password.'; passEl.focus(); return; }
 
+  const players = loadPlayers();
+  const key = normalizeName(name);
+  const record = players[key];
+  if (!record) {
+    errEl.textContent = 'Name not found. Please register first.';
+    nameEl.focus();
+    return;
+  }
+
   showBusyOnButtons(loginBtn, backBtn, 'Checking...');
 
   try {
-    if (await backendAvailable()) {
-      // Fetch this user's stored salt/iterations so we can derive the hash locally.
-      const userRes = await fetch('/api/user/' + encodeURIComponent(normalizeName(name)));
-      if (!userRes.ok) {
-        errEl.textContent = 'Name not found. Please register first.';
-        clearBusyOnButtons(loginBtn, backBtn);
-        return;
-      }
-      const user = await userRes.json();
-      const recomputed = await derivePasswordHash(pass, user.salt, user.iterations || DEFAULT_PBKDF2_ITERATIONS);
-      const loginRes = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: normalizeName(name), hash: recomputed })
-      });
-      const loginData = await loginRes.json().catch(() => ({}));
-      if (!loginRes.ok || !loginData.ok) {
-        errEl.textContent = 'Password incorrect. Please try again.';
-        passEl.focus();
-        clearBusyOnButtons(loginBtn, backBtn);
-        return;
-      }
-      setCurrentPlayer(name);
-      _sessionHash = recomputed;
-      // pull cloud progress so this account plays the same game on any device
-      const prog = await loadServerProgress(name);
-      applyServerProgress(name, prog);
-      await loadAdminStatus(name);
-      onAuthSuccess(name, true);
-    } else {
-      // No server (e.g. GitHub Pages) → read from local browser storage.
-      const players = loadPlayers();
-      const key = normalizeName(name);
-      const record = players[key];
-      if (!record) {
-        errEl.textContent = 'Name not found. Please register first.';
-        clearBusyOnButtons(loginBtn, backBtn);
-        return;
-      }
-      const recomputed = await derivePasswordHash(pass, record.salt, record.iterations || DEFAULT_PBKDF2_ITERATIONS);
-      if (!constantTimeEqual(recomputed, record.hash)) {
-        errEl.textContent = 'Password incorrect. Please try again.';
-        passEl.focus();
-        clearBusyOnButtons(loginBtn, backBtn);
-        return;
-      }
-      setCurrentPlayer(record.name);
-      onAuthSuccess(record.name, true);
+    const recomputed = await derivePasswordHash(pass, record.salt, record.iterations || DEFAULT_PBKDF2_ITERATIONS);
+    if (!constantTimeEqual(recomputed, record.hash)) {
+      errEl.textContent = 'Password incorrect. Please try again.';
+      passEl.focus();
+      clearBusyOnButtons(loginBtn, backBtn);
+      return;
     }
+    setCurrentPlayer(record.name);
+    onAuthSuccess(record.name, true);
   } catch (err) {
-    console.error('Error during login', err);
-    errEl.textContent = 'Could not reach the server. Please try again.';
+    console.error('Error deriving password hash for login', err);
+    errEl.textContent = 'An unexpected error occurred. Please try again.';
     clearBusyOnButtons(loginBtn, backBtn);
   }
 }
@@ -944,7 +741,6 @@ function onAuthSuccess(playerName, wasLogin) {
     setTimeout(() => { if (authPanel && authPanel.parentNode) authPanel.parentNode.removeChild(authPanel); }, 700);
     // start the game (initGame handles intro overlay)
     initGame(playerName);
-    showLogoutButton();
   }, 600);
 }
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
@@ -972,6 +768,17 @@ const SHAKE_DURATION = 14;  // frames of screen shake after being hurt
 const SHAKE_MAGNITUDE = 7;  // max shake offset in px
 const HEAL_SPEED = 0.2;     // HP restored per frame while healing at the campfire (~1s to full)
 
+// ----- Forgotten cave village (reached through the level-3 hole) -----
+const HOLE_X = 2000;         // x of the hole in the level-3 ground
+const HOLE_WIDTH = 80;       // hole width (small enough to jump over)
+const VILLAGE_ENTER_X = 2600; // crossing this in the village scene shows the title
+const VILLAGE_BAT_COUNT = 3;
+const VILLAGE_RETURN_X = 4480; // cave entrance at the village's right end (leads to the forgotten depths)
+const DEPTHS_RETURN_X = 60;    // cave entrance at the depths' left end (leads back to the village)
+const DEPTHS_PIT_X = 3320;     // left edge of the big pit at the depths' right end
+const DEPTHS_PIT_W = 300;      // width of the big pit
+const DEPTHS_CRAWLER_COUNT = 5; // mutant crawlers wandering the depths
+
 // ----- Mutant bat enemy (level 3) -----
 const ENEMY_BAT_HP = 10;
 const ENEMY_BAT_RADIUS = 30;
@@ -982,11 +789,32 @@ const ENEMY_BAT_DAMAGE = 5;       // contact damage the bat deals to the player
 const ENEMY_DROP_RATE = 0.2;      // 20% chance to drop a small fang on death
 const LEVEL2_BAT_COUNT = 3;
 
-// ----- Crocodile enemy (level 4) -----
-const ENEMY_CROC_HP = 30;
-const ENEMY_CROC_RADIUS = 38;
-const ENEMY_CROC_SPEED = 1.6;      // ground-crawl speed toward the player
-const ENEMY_CROC_DAMAGE = 4;       // contact damage the crocodile deals
+// ----- Mutant crawler enemy (forgotten depths) -----
+const ENEMY_CRAWLER_HP = 15;
+const ENEMY_CRAWLER_RADIUS = 26;
+const ENEMY_CRAWLER_SPEED = 6.0;        // crawls slightly slower than the player's 6.5
+const ENEMY_CRAWLER_DAMAGE = 10;
+const ENEMY_CRAWLER_DIR_INTERVAL = 300; // frames (~5s) between random direction changes
+
+// ----- Upper layer of the new map (reached by falling into the depths' big pit) -----
+const UPPER_CRAWLER_MAX = 10;     // stop spawning crawlers once this many are alive
+const UPPER_BAT_MAX = 15;         // stop spawning bats once this many are alive
+const ENEMY_SPAWN_INTERVAL = 600; // frames (~10s) between enemy respawns on the upper layer
+const UPPER_CRAWLER_INITIAL = 3;  // crawlers present when the layer first loads
+const UPPER_BAT_INITIAL = 3;      // bats present when the layer first loads
+
+// ----- Crawler Overlord (boss spawned on the upper layer) -----
+const OVERLORD_HP = 50;
+const OVERLORD_DAMAGE = 10;
+const OVERLORD_RADIUS = 52;       // collision radius (2x a crawler's 26)
+const OVERLORD_RX = 60;           // ellipse half-width (2x a crawler's 30)
+const OVERLORD_RY = 24;           // ellipse half-height (2x a crawler's 12)
+const OVERLORD_CHARGE_SPEED = MAX_SPEED * 1.5; // charge at 1.5x the player's run speed
+const OVERLORD_SPAWN_CHANCE = 0.05; // 5% of crawler spawns become the overlord
+const OVERLORD_WINDUP_FRAMES = 180; // stationary white-airflow windup (~3s)
+const OVERLORD_CHARGE_FRAMES = 180; // charge (~3s)
+const OVERLORD_BURROW_FRAMES = 300; // buried underground (~5s)
+const OVERLORD_EMERGE_FRAMES = 30;  // brief emerge
 
 // ----- Cave boss tuning -----
 const BOSS_RADIUS = PLAYER_RADIUS * 3; // 3x the player's diameter
@@ -1011,40 +839,9 @@ const ITEM_CATEGORIES = [
 const ITEM_DEFS = {
   'bat-fang': { name: '巨型蝙蝠尖牙', category: 'weapon', range: 96, damage: 5 },
   'small-bat-fang': { name: '小型蝙蝠尖牙', category: 'material' },
-  'crocodile-scale': { name: '鳄鱼鳞片', category: 'weapon', range: 112, damage: 8 }
+  'crawler-scale': { name: '爬虫鳞甲', category: 'material' },
+  'crawler-spike': { name: '爬虫尖刺', category: 'material' }
 };
-
-// ----- 融合：对方的新世界（遗忘的山洞村庄 / 深渊 / 上层 / 爬行领主）所需常量 -----
-const HOLE_X = 2000;             // 地面上的洞口 x（从村庄掉入）
-const HOLE_WIDTH = 80;
-const VILLAGE_ENTER_X = 2600;    // 进入村庄后跨过此 x 显示标题
-const VILLAGE_BAT_COUNT = 3;
-const VILLAGE_RETURN_X = 4480;   // 村庄右端的洞口，通往深渊
-const DEPTHS_RETURN_X = 60;      // 深渊左端洞口，返回村庄
-const DEPTHS_PIT_X = 3320;       // 深渊右端大坑（掉入传送至上层）
-const DEPTHS_PIT_W = 300;
-const DEPTHS_CRAWLER_COUNT = 5;
-const ENEMY_CRAWLER_HP = 15;
-const ENEMY_CRAWLER_RADIUS = 26;
-const ENEMY_CRAWLER_SPEED = 6.0;
-const ENEMY_CRAWLER_DAMAGE = 10;
-const ENEMY_CRAWLER_DIR_INTERVAL = 300;
-const UPPER_CRAWLER_MAX = 10;
-const UPPER_BAT_MAX = 15;
-const ENEMY_SPAWN_INTERVAL = 600;
-const UPPER_CRAWLER_INITIAL = 3;
-const UPPER_BAT_INITIAL = 3;
-const OVERLORD_HP = 50;
-const OVERLORD_DAMAGE = 10;
-const OVERLORD_RADIUS = 52;
-const OVERLORD_RX = 60;
-const OVERLORD_RY = 24;
-const OVERLORD_CHARGE_SPEED = MAX_SPEED * 1.5;
-const OVERLORD_SPAWN_CHANCE = 0.05;
-const OVERLORD_WINDUP_FRAMES = 180;
-const OVERLORD_CHARGE_FRAMES = 180;
-const OVERLORD_BURROW_FRAMES = 300;
-const OVERLORD_EMERGE_FRAMES = 30;
 const CATEGORY_COLORS = {
   weapon: '#d9a441', armor: '#6fb3d9', rune: '#9b7bd9', consumable: '#7bd97b', material: '#b08d6a'
 };
@@ -1091,24 +888,7 @@ function hasEnteredCave(name) {
 function setEnteredCave(name) {
   try { localStorage.setItem(caveFlagKeyFor(name), '1'); } catch (e) { }
 }
-function level2FlagKeyFor(name) {
-  return 'deepest_entered_level2_' + (name ? (name.trim().toLowerCase()) : 'anonymous');
-}
-function hasEnteredLevel2(name) {
-  try { return !!localStorage.getItem(level2FlagKeyFor(name)); } catch (e) { return false; }
-}
-function setEnteredLevel2(name) {
-  try { localStorage.setItem(level2FlagKeyFor(name), '1'); } catch (e) { }
-}
-function level4FlagKeyFor(name) {
-  return 'deepest_entered_level4_' + (name ? (name.trim().toLowerCase()) : 'anonymous');
-}
-function hasEnteredLevel4(name) {
-  try { return !!localStorage.getItem(level4FlagKeyFor(name)); } catch (e) { return false; }
-}
-function setEnteredLevel4(name) {
-  try { localStorage.setItem(level4FlagKeyFor(name), '1'); } catch (e) { }
-}
+
 function inventoryKeyFor(name) {
   return 'deepest_inventory_' + (name ? name.trim().toLowerCase() : 'anonymous');
 }
@@ -1125,82 +905,12 @@ function savePlayerInfo(gs) {
   saveInventory(gs.player.name, {
     inventory: gs.inventory,
     weaponSlot: gs.weaponSlot,
-    backpackUnlocked: gs.backpackUnlocked
+    weaponSpike: gs.weaponSpike,
+    backpackUnlocked: gs.backpackUnlocked,
+    respawnScene: gs.respawnScene,
+    respawnX: gs.respawnX,
+    npcTalked: gs.npcTalked
   });
-}
-
-// ----- Cloud progress sync (Turso) -----
-// The (locally-derived) password hash is kept so we can authenticate writes to
-// the server without ever sending the plaintext password.
-let _sessionHash = null;
-let _isAdmin = false; // 当前账号是否为数据库中的管理员（由 /api/admin 读取）
-
-// Furthest scene this player has reached, based on the local "entered" flags.
-function currentReachedScene(name) {
-  if (hasEnteredLevel4(name)) return 'level4';
-  if (hasEnteredLevel2(name)) return 'level2';
-  if (hasEnteredCave(name)) return 'cave';
-  return 'chase';
-}
-
-// Pull saved progress from the cloud (returns null when offline / no backend).
-async function loadServerProgress(name) {
-  if (!(await backendAvailable())) return null;
-  try {
-    const res = await fetch('/api/progress?name=' + encodeURIComponent(normalizeName(name)));
-    if (!res.ok) return null;
-    const data = await res.json().catch(() => ({}));
-    return data.progress || null;
-  } catch (e) { console.warn('load progress failed', e); return null; }
-}
-
-// 从服务器读取当前账号是否为管理员，并设置模块级 _isAdmin（供 initGame 启用管理功能）。
-async function loadAdminStatus(name) {
-  if (!(await backendAvailable())) return false;
-  try {
-    const res = await fetch('/api/admin?caller=' + encodeURIComponent(normalizeName(name)) + '&hash=' + encodeURIComponent(_sessionHash || ''));
-    if (!res.ok) return false;
-    const data = await res.json().catch(() => ({}));
-    _isAdmin = !!data.isAdmin;
-    return _isAdmin;
-  } catch (e) { console.warn('load admin status failed', e); return false; }
-}
-
-// Seed the local store (inventory + reached-scene flags) from the cloud so the
-// same account keeps the same progress on any device/browser.
-function applyServerProgress(name, progress) {
-  if (!progress) return;
-  saveInventory(name, {
-    inventory: progress.inventory || {},
-    weaponSlot: progress.weaponSlot || null,
-    backpackUnlocked: !!progress.backpackUnlocked
-  });
-  const reached = progress.reached || 'chase';
-  if (reached === 'cave' || reached === 'level2' || reached === 'level4') setEnteredCave(name);
-  if (reached === 'level2' || reached === 'level4') setEnteredLevel2(name);
-  if (reached === 'level4') setEnteredLevel4(name);
-}
-
-// Push the current game progress to the cloud. Called whenever a level is cleared
-// (or saved at a campfire) so the account's progress is mirrored on the server.
-async function saveServerProgress() {
-  const gs = gameState;
-  if (!gs || !_sessionHash) return;
-  if (!(await backendAvailable())) return; // local (no-backend) accounts stay local
-  const name = gs.player.name;
-  const progress = {
-    inventory: gs.inventory || {},
-    weaponSlot: gs.weaponSlot || null,
-    backpackUnlocked: !!gs.backpackUnlocked,
-    reached: currentReachedScene(name)
-  };
-  try {
-    await fetch('/api/progress', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: normalizeName(name), hash: _sessionHash, progress })
-    });
-  } catch (e) { console.warn('save progress failed', e); }
 }
 
 const FADE_SPEED = 0.04; // scene-transition fade speed (per 60fps frame)
@@ -1210,6 +920,9 @@ function setupCaveScene(gs) {
   gs.scene = 'cave';
   gs.drops = []; gs.backpackOpen = false; gs.dragState = null; gs.backpackItemRects = []; gs.enemies = [];
   gs.campfire = null;
+  gs.houses = [];
+  gs.npc = null;
+  gs.dialogue = null;
   gs.worldWidth = Math.max(W * 3, 3200);
   const groundY = H - 150;
   gs.platforms = [{ x: 0, y: groundY, width: gs.worldWidth, height: 20 }];
@@ -1235,6 +948,9 @@ function setupChaseScene(gs) {
   gs.scene = 'chase';
   gs.drops = []; gs.backpackOpen = false; gs.dragState = null; gs.backpackItemRects = []; gs.enemies = [];
   gs.campfire = null;
+  gs.houses = [];
+  gs.npc = null;
+  gs.dialogue = null;
   gs.worldWidth = Math.max(W * 6, 4800);
   gs.caveX = gs.worldWidth - 170;
   gs.platforms = buildLevelPlatforms(gs.worldWidth, gs.caveX);
@@ -1262,8 +978,15 @@ function setupLevel2Scene(gs) {
     gs.enemies.push(makeBat(bx, by));
   }
   const groundY = H - 150;
-  gs.platforms = [{ x: 0, y: groundY, width: gs.worldWidth, height: 20 }];
+  // ground with a jumpable hole at HOLE_X that drops down to the village
+  gs.platforms = [
+    { x: 0, y: groundY, width: HOLE_X, height: 20 },
+    { x: HOLE_X + HOLE_WIDTH, y: groundY, width: gs.worldWidth - HOLE_X - HOLE_WIDTH, height: 20 }
+  ];
   gs.campfire = { x: 800, y: groundY };  // save point (press ↑ when nearby)
+  gs.houses = [];
+  gs.npc = null;
+  gs.dialogue = null;
   gs.caveX = -1;
   gs.gasX = GAS_START_X;
   gs.rocks = [];
@@ -1277,24 +1000,111 @@ function setupLevel2Scene(gs) {
   gs.player.vy = 0;
 }
 
-// Reconfigure the game for level 4: a flat marsh where a ground-crawling
-// crocodile guards the crocodile scale.
-function setupLevel4Scene(gs) {
-  gs.scene = 'level4';
+// Reconfigure the game for the forgotten cave village (lower cavern reached via the hole).
+function setupVillageScene(gs) {
+  gs.scene = 'village';
   gs.drops = []; gs.backpackOpen = false; gs.dragState = null; gs.backpackItemRects = []; gs.enemies = [];
-  gs.worldWidth = Math.max(W * 3, 3000);
+  gs.worldWidth = Math.max(W * 2, 4600);
   const groundY = H - 150;
   gs.platforms = [{ x: 0, y: groundY, width: gs.worldWidth, height: 20 }];
-  gs.campfire = { x: 700, y: groundY };   // save / heal point
+  // a few mutant bats on the walk toward the village
+  for (let i = 0; i < VILLAGE_BAT_COUNT; i++) {
+    gs.enemies.push(makeBat(2150 + i * 200, H * 0.34));
+  }
+  // bigger houses (decorative only, no collision)
+  gs.houses = [
+    { x: 2650, y: groundY - 120, width: 200, height: 120 },
+    { x: 3500, y: groundY - 140, width: 220, height: 140 },
+    { x: 3850, y: groundY - 110, width: 180, height: 110 },
+    { x: 4200, y: groundY - 130, width: 210, height: 130 }
+  ];
+  gs.campfire = { x: 3200, y: groundY };  // save point at the village center
+  gs.npc = { id: 'elder', name: '老者', x: 3370, y: groundY };  // village elder standing beside the campfire (talk with ↑)
+  gs.dialogue = null;
+  gs.villageTitleShown = false;
   gs.caveX = -1;
   gs.gasX = GAS_START_X;
   gs.rocks = [];
   gs.boss = null;
   gs.wall = null;
   gs.wallX = 0;
-  // spawn the crocodile on the ground, near the right edge
-  gs.enemies.push(makeCrocodile(gs.worldWidth - 400, groundY - ENEMY_CROC_RADIUS));
+  // spawn: fall from the air, directly below the level-3 hole
+  gs.spawn = { x: HOLE_X, y: 30 };
+  gs.player.x = gs.spawn.x;
+  gs.player.y = gs.spawn.y;
+  gs.player.vx = 0;
+  gs.player.vy = 0;
+}
+
+// Reconfigure the game for the forgotten depths (cave beyond the village, with mutant crawlers).
+function setupDepthsScene(gs) {
+  gs.scene = 'depths';
+  gs.drops = []; gs.backpackOpen = false; gs.dragState = null; gs.backpackItemRects = []; gs.enemies = [];
+  gs.worldWidth = Math.max(W * 2, 3900);
+  const groundY = H - 150;
+  // upward terrain: return ledge -> flat floor -> staircase -> plateau -> the big pit at the end
+  gs.platforms = [
+    { x: 0, y: groundY - 70, width: 150, height: 20 },     // low ledge for the return entrance (left)
+    { x: 0, y: groundY, width: 3320, height: 20 },         // bottom floor (up to the pit)
+    { x: 1900, y: groundY - 90, width: 190, height: 20 },  // stair 1
+    { x: 2090, y: groundY - 180, width: 190, height: 20 }, // stair 2
+    { x: 2280, y: groundY - 270, width: 190, height: 20 }, // stair 3
+    { x: 2470, y: groundY - 300, width: 850, height: 20 }, // plateau (up to the pit's near edge)
+    { x: 3620, y: groundY - 300, width: 280, height: 20 }  // pit's far rim
+  ];
+  // mutant crawlers wander the bottom floor, kept clear of the pit
+  for (let i = 0; i < DEPTHS_CRAWLER_COUNT; i++) {
+    gs.enemies.push(makeCrawler(400 + i * 500, groundY, 0, 3300));
+  }
+  gs.houses = [];
+  gs.npc = { id: 'guard', name: '村庄守卫', x: 3200, y: groundY - 300 }; // guard beside the big pit (talk with ↑)
+  gs.dialogue = null;
+  gs.campfire = null;
+  gs.caveX = -1;
+  gs.gasX = GAS_START_X;
+  gs.rocks = [];
+  gs.boss = null;
+  gs.wall = null;
+  gs.wallX = 0;
   gs.spawn = { x: 200, y: groundY - PLAYER_RADIUS };
+  gs.player.x = gs.spawn.x;
+  gs.player.y = gs.spawn.y;
+  gs.player.vx = 0;
+  gs.player.vy = 0;
+}
+
+// Reconfigure the game for the upper layer of the new map (reached by falling into the depths' pit).
+function setupUpperScene(gs) {
+  gs.scene = 'upper';
+  gs.drops = []; gs.backpackOpen = false; gs.dragState = null; gs.backpackItemRects = []; gs.enemies = [];
+  gs.worldWidth = Math.max(W * 2, 7200);
+  const groundY = H - 150;
+  // flat ground plus floating platforms, evenly spaced across the doubled map
+  gs.platforms = [{ x: 0, y: groundY, width: gs.worldWidth, height: 20 }];
+  const airHeights = [120, 180, 150, 200, 130, 175, 160, 210, 125, 185, 145, 195, 135, 170];
+  for (let i = 0; i < airHeights.length; i++) {
+    gs.platforms.push({ x: 300 + i * 480, y: groundY - airHeights[i], width: 170, height: 18 });
+  }
+  // seed a few enemies, then keep respawning up to the caps
+  for (let i = 0; i < UPPER_CRAWLER_INITIAL; i++) {
+    gs.enemies.push(makeCrawler(400 + Math.random() * (gs.worldWidth - 800), groundY));
+  }
+  for (let i = 0; i < UPPER_BAT_INITIAL; i++) {
+    gs.enemies.push(makeBat(400 + Math.random() * (gs.worldWidth - 800), H * 0.35));
+  }
+  gs.spawnTimer = ENEMY_SPAWN_INTERVAL;
+  gs.houses = [];
+  gs.npc = null;
+  gs.dialogue = null;
+  gs.campfire = null;
+  gs.caveX = -1;
+  gs.gasX = GAS_START_X;
+  gs.rocks = [];
+  gs.boss = null;
+  gs.wall = null;
+  gs.wallX = 0;
+  // random teleport: land at a random x, falling from the air
+  gs.spawn = { x: 250 + Math.random() * (gs.worldWidth - 500), y: 30 };
   gs.player.x = gs.spawn.x;
   gs.player.y = gs.spawn.y;
   gs.player.vx = 0;
@@ -1305,9 +1115,27 @@ function setupLevel4Scene(gs) {
 // fade transition, so it must NOT clear gs.fade — the fade caller manages that.
 function resetLevel() {
   const gs = gameState;
-  if (gs.scene === 'cave') setupCaveScene(gs);
-  else if (gs.scene === 'level2') setupLevel2Scene(gs);
-  else setupChaseScene(gs);
+  // Respawn at the campfire the player last saved at (whatever scene it lives in);
+  // otherwise fall back to the current scene's start.
+  const rs = gs.respawnScene;
+  if (rs) {
+    if (rs === 'level2') setupLevel2Scene(gs);
+    else if (rs === 'village') setupVillageScene(gs);
+    else if (rs === 'cave') setupCaveScene(gs);
+    else if (rs === 'depths') setupDepthsScene(gs);
+    else setupChaseScene(gs);
+    if (gs.respawnX != null) {
+      gs.player.x = gs.respawnX;
+      gs.player.y = (H - 150) - PLAYER_RADIUS;
+    }
+  } else {
+    if (gs.scene === 'cave') setupCaveScene(gs);
+    else if (gs.scene === 'level2') setupLevel2Scene(gs);
+    else if (gs.scene === 'village') setupVillageScene(gs);
+    else if (gs.scene === 'depths') setupDepthsScene(gs);
+    else if (gs.scene === 'upper') setupUpperScene(gs);
+    else setupChaseScene(gs);
+  }
   gs.input.jump = false;
   gs.input.jumpHeld = false;
   gs.player.hp = gs.player.maxHp;
@@ -1328,7 +1156,6 @@ function enterCave() {
   const gs = gameState;
   if (gs.status !== 'playing' || gs.fade) return;
   setEnteredCave(gs.player.name);
-  saveServerProgress();
   gs.fade = { alpha: 0, dir: 1, action: 'to-cave' };
 }
 
@@ -1339,53 +1166,117 @@ function continueRespawn() {
   gs.fade = { alpha: 0, dir: 1, action: 'respawn' };
 }
 
-// Player pressed Enter/Space on the victory screen: replay from level 1.
-function restartFromChase() {
-  const gs = gameState;
-  if (!gs || gs.fade) return;
-  gs.fade = null;
-  setupChaseScene(gs);
-  gs.player.hp = PLAYER_MAX_HP;
-  gs.status = 'playing';
-  gs.statusTimer = 0;
-}
-
 // Player walked through the opened hole: save progress and fade to the next level.
 function enterNextLevel() {
   const gs = gameState;
   if (gs.status !== 'playing' || gs.fade) return;
-  setEnteredLevel2(gs.player.name);
-  saveServerProgress();
   gs.fade = { alpha: 0, dir: 1, action: 'to-level2' };
 }
 
-// Player cleared level 3 (all bats): save progress, then fade to the crocodile level.
-function enterLevel4() {
+// Player fell through the level-3 hole: fade down into the forgotten cave village.
+function enterVillage() {
   const gs = gameState;
   if (gs.status !== 'playing' || gs.fade) return;
-  setEnteredLevel4(gs.player.name);
-  saveServerProgress();
-  gs.fade = { alpha: 0, dir: 1, action: 'to-level4' };
+  gs.fade = { alpha: 0, dir: 1, action: 'to-village' };
+}
+
+// Player reached the cave entrance at the village's right end: enter the forgotten depths.
+function enterDepths() {
+  const gs = gameState;
+  if (gs.status !== 'playing' || gs.fade) return;
+  gs.fade = { alpha: 0, dir: 1, action: 'to-depths' };
+}
+
+// Player walked back through the depths' left entrance: return to the village.
+function returnToVillage() {
+  const gs = gameState;
+  if (gs.status !== 'playing' || gs.fade) return;
+  gs.fade = { alpha: 0, dir: 1, action: 'return-village' };
+}
+
+// Player fell into the depths' big pit: random-teleport to the new map's upper layer.
+function enterUpper() {
+  const gs = gameState;
+  if (gs.status !== 'playing' || gs.fade) return;
+  gs.fade = { alpha: 0, dir: 1, action: 'to-upper' };
 }
 
 function flashSaving(gs) {
   gs.savingTimer = 90; // show "Saving…" for ~1.5s
 }
 
-// ----- Campfire save point (level 3) -----
+function showTitle(gs, text) {
+  gs.titleText = { text, alpha: 1, timer: 0 };
+}
+
+// ----- Campfire save point (level 3 & village) -----
 function isNearCampfire(gs) {
-  return !!(gs.campfire && (gs.scene === 'level2' || gs.scene === 'level4') && Math.abs(gs.player.x - gs.campfire.x) < 90);
+  return !!(gs.campfire && Math.abs(gs.player.x - gs.campfire.x) < 90);
 }
 function saveAtCampfire() {
   const gs = gameState;
   if (!gs || gs.status !== 'playing' || gs.fade) return;
   if (!isNearCampfire(gs)) return;
-  setEnteredLevel2(gs.player.name);
+  gs.respawnScene = gs.scene;
+  gs.respawnX = gs.campfire.x;
   savePlayerInfo(gs);
-  saveServerProgress();
   flashSaving(gs);
   gs.pickups.push({ text: '已存档', timer: 90 });
   gs.healing = true;  // start refilling HP to full
+}
+
+// ----- Village elder NPC (talk with ↑) -----
+function isNearNpc(gs) {
+  return !!(gs.npc && Math.abs(gs.player.x - gs.npc.x) < 60);
+}
+function talkToNpc() {
+  const gs = gameState;
+  if (!gs || gs.status !== 'playing' || gs.fade || gs.dialogue) return;
+  if (!isNearNpc(gs)) return;
+  const name = gs.player.name || '旅人';
+  if (gs.npc && gs.npc.id === 'guard') {
+    gs.dialogue = {
+      speaker: '村庄守卫',
+      lines: [
+        '你好"' + name + '"，我在村长那里听说你了。',
+        '最近我们地下发生了地震，这个大坑就是这样出现的。',
+        '我的四个同伴掉进去了，出来的只有两人......（神色黯淡）',
+        '出来的同伴说，这个大洞很诡异，虽然他们是从一个地方掉下去的，但最后掉的地方却天差地别。'
+      ],
+      index: 0,
+      first: false
+    };
+  } else if (gs.npcTalked) {
+    gs.dialogue = {
+      speaker: '老者',
+      lines: ['旁边的篝火可以休息，如果你累了，坐在旁边烤烤火吧'],
+      index: 0,
+      first: false
+    };
+  } else {
+    gs.dialogue = {
+      speaker: '老者',
+      lines: [
+        '你好啊"' + name + '"，欢迎来到我们的村落。我是村长。',
+        '在之前，由于村庄过于隐蔽，几乎从未有过外来人到我们这里来。',
+        '可是，最近却接二连三的出现了不少外来人，进来时就满脸惊恐。',
+        '他们说地表涌出了许多毒气，似乎还有一个怪兽。于是他们就逃了下来。',
+        '你也是跟他们类似的原因吧。我本来半信半疑，但最近出现了一些变异的蝙蝠，似乎与毒气有关。',
+        '哎，也不知道世界发生了什么事，祝君一路好运......'
+      ],
+      index: 0,
+      first: true
+    };
+  }
+}
+function advanceDialogue() {
+  const gs = gameState;
+  if (!gs || !gs.dialogue) return;
+  gs.dialogue.index++;
+  if (gs.dialogue.index >= gs.dialogue.lines.length) {
+    if (gs.dialogue.first) gs.npcTalked = true;
+    gs.dialogue = null;
+  }
 }
 
 // Admin helper: instantly jump to any scene without changing saved progress.
@@ -1395,7 +1286,6 @@ function teleportTo(scene) {
   if (scene === 'chase') setupChaseScene(gs);
   else if (scene === 'cave') setupCaveScene(gs);
   else if (scene === 'level2') setupLevel2Scene(gs);
-  else if (scene === 'level4') setupLevel4Scene(gs);
   else if (scene === 'village') setupVillageScene(gs);
   else if (scene === 'depths') setupDepthsScene(gs);
   else if (scene === 'upper') setupUpperScene(gs);
@@ -1411,11 +1301,17 @@ function updateFade(gs, dt) {
     f.alpha = 1;
     if (f.action === 'to-cave') setupCaveScene(gs);
     else if (f.action === 'to-level2') setupLevel2Scene(gs);
-    else if (f.action === 'to-level4') setupLevel4Scene(gs);
     else if (f.action === 'to-village') setupVillageScene(gs);
     else if (f.action === 'to-depths') setupDepthsScene(gs);
     else if (f.action === 'to-upper') setupUpperScene(gs);
-    else if (f.action === 'return-village') setupVillageScene(gs);
+    else if (f.action === 'return-village') {
+      setupVillageScene(gs);
+      gs.villageTitleShown = true; // title already seen; don't replay it
+      gs.player.x = VILLAGE_RETURN_X - 60;
+      gs.player.y = (H - 150) - PLAYER_RADIUS;
+      gs.player.vx = 0;
+      gs.player.vy = 0;
+    }
     else if (f.action === 'respawn') resetLevel();
     f.action = null;
     f.dir = -1; // now fade back in
@@ -1493,21 +1389,6 @@ function updateCaveScene(gs, dt) {
   // walk through the opened hole -> next level
   if (gs.wall && gs.wall.holeOpen && gs.player.x >= gs.wallX + 60) {
     enterNextLevel();
-  }
-}
-
-// Level 3 (plain): once every mutant bat is gone, advance to the crocodile level.
-function updateLevel2Scene(gs, dt) {
-  updateEnemies(gs, dt);
-  if (gs.enemies.length === 0) enterLevel4();
-}
-
-// Level 4 (marsh): the crocodile is the final foe. Victory once its scale is collected.
-function updateLevel4Scene(gs, dt) {
-  updateEnemies(gs, dt);
-  if (gs.enemies.length === 0 && gs.inventory['crocodile-scale'] && gs.status === 'playing' && !gs.fade) {
-    saveServerProgress(); // persist the full clear (incl. the collected scale)
-    enterVillage(); // 鳄鱼关作为倒数第二关，通关后进入新世界（村庄）
   }
 }
 
@@ -1669,10 +1550,9 @@ function damageBoss(gs, amount) {
 }
 
 // Resolve a weapon swing: any enemy in front of the player, within range, flashes + loses HP.
-function attackHitEnemies(gs, range, damage, weaponId) {
+function attackHitEnemies(gs, range, damage) {
   const p = gs.player;
   const b = gs.boss;
-  const isScale = weaponId === 'crocodile-scale'; // 鳄鱼鳞片
   if (b && b.appeared && b.state !== 'dying' && b.state !== 'gone') {
     const dx = b.x - p.x;
     const inFront = (p.face > 0) ? dx >= -b.r : dx <= b.r;
@@ -1687,26 +1567,21 @@ function attackHitEnemies(gs, range, damage, weaponId) {
     const inFront = (p.face > 0) ? dx >= -e.r : dx <= e.r;
     if (!inFront) continue;
     if (Math.hypot(dx, e.y - p.y) <= range + e.r) {
-      let dmg = damage;
-      if (isScale && e.type === 'bat') dmg = e.hp; // 鳄鱼鳞片秒杀蝙蝠
-      else if (isScale && e.type === 'crocodile') dmg = ENEMY_CROC_HP / 2; // 鳞片两次击杀鳄鱼(30HP)
-      e.hp -= dmg;
+      e.hp -= damage;
       e.flashTimer = 15;
-      const len = Math.hypot(dx, e.y - p.y) || 1;
-      e.vx = (dx / len) * ENEMY_KNOCKBACK;
-      e.vy = ((e.y - p.y) / len) * ENEMY_KNOCKBACK;
+      if (e.type !== 'crawler-boss') { // the overlord holds its ground instead of bouncing
+        const len = Math.hypot(dx, e.y - p.y) || 1;
+        e.vx = (dx / len) * ENEMY_KNOCKBACK;
+        e.vy = ((e.y - p.y) / len) * ENEMY_KNOCKBACK;
+      }
       if (e.hp <= 0) {
         e.alive = false;
-        if (e.type === 'crawler-boss') {
-          // 击败爬行领主（最终 Boss）即通关
-          if (gs.scene === 'upper') gs.status = 'victory';
+        if (e.type === 'bat') {
+          if (Math.random() < ENEMY_DROP_RATE) spawnDrop(gs, 'small-bat-fang', e.x, e.y);
         } else if (e.type === 'crawler') {
+          // scale (70%) and spike (20%) roll independently: nothing, one, or both can drop
           if (Math.random() < 0.70) spawnDrop(gs, 'crawler-scale', e.x, e.y);
           if (Math.random() < 0.20) spawnDrop(gs, 'crawler-spike', e.x, e.y);
-        } else {
-          const rate = (e.dropRate != null) ? e.dropRate : ENEMY_DROP_RATE;
-          const item = e.dropItem || 'small-bat-fang';
-          if (Math.random() < rate) spawnDrop(gs, item, e.x, e.y);
         }
       }
     }
@@ -1715,198 +1590,34 @@ function attackHitEnemies(gs, range, damage, weaponId) {
 
 function makeBat(x, y) {
   return {
+    type: 'bat',
     x, y,
     vx: 0, vy: 0,       // knockback impulse
     r: ENEMY_BAT_RADIUS,
     hp: ENEMY_BAT_HP, maxHp: ENEMY_BAT_HP,
     flashTimer: 0,
     alive: true,
-    type: 'bat',
-    dropItem: 'small-bat-fang',
-    dropRate: ENEMY_DROP_RATE,
     bobPhase: Math.random() * Math.PI * 2
   };
 }
 
-function makeCrocodile(x, y) {
-  return {
-    x, y,
-    vx: 0, vy: 0,       // knockback impulse
-    r: ENEMY_CROC_RADIUS,
-    hp: ENEMY_CROC_HP, maxHp: ENEMY_CROC_HP,
-    flashTimer: 0,
-    alive: true,
-    type: 'crocodile',
-    face: -1,           // 1 = facing right, -1 = facing left (for drawing the snout)
-    dropItem: 'crocodile-scale',
-    dropRate: 1,        // always drops a scale on death
-    bobPhase: Math.random() * Math.PI * 2
-  };
-}
-
-// ===== 融合：对方的新世界（村庄 / 深渊 / 上层 / 爬行领主） =====
-
-// Reconfigure the game for the forgotten cave village (lower cavern).
-function setupVillageScene(gs) {
-  gs.scene = 'village';
-  gs.drops = []; gs.backpackOpen = false; gs.dragState = null; gs.backpackItemRects = []; gs.enemies = [];
-  gs.worldWidth = Math.max(W * 2, 4600);
-  const groundY = H - 150;
-  gs.platforms = [{ x: 0, y: groundY, width: gs.worldWidth, height: 20 }];
-  // a few mutant bats on the walk toward the village
-  for (let i = 0; i < VILLAGE_BAT_COUNT; i++) {
-    gs.enemies.push(makeBat(2150 + i * 200, H * 0.34));
-  }
-  // bigger houses (decorative only, no collision)
-  gs.houses = [
-    { x: 2650, y: groundY - 120, width: 200, height: 120 },
-    { x: 3500, y: groundY - 140, width: 220, height: 140 },
-    { x: 3850, y: groundY - 110, width: 180, height: 110 },
-    { x: 4200, y: groundY - 130, width: 210, height: 130 }
-  ];
-  gs.campfire = { x: 3200, y: groundY };  // save point at the village center
-  gs.npc = { id: 'elder', name: '老者', x: 3370, y: groundY };  // village elder beside the campfire (talk with ↑)
-  gs.dialogue = null;
-  gs.villageTitleShown = false;
-  gs.caveX = -1;
-  gs.gasX = GAS_START_X;
-  gs.rocks = [];
-  gs.boss = null;
-  gs.wall = null;
-  gs.wallX = 0;
-  // spawn: fall from the air, directly below the hole
-  gs.spawn = { x: HOLE_X, y: 30 };
-  gs.player.x = gs.spawn.x;
-  gs.player.y = gs.spawn.y;
-  gs.player.vx = 0;
-  gs.player.vy = 0;
-}
-
-// Reconfigure the game for the forgotten depths (cave beyond the village, with mutant crawlers).
-function setupDepthsScene(gs) {
-  gs.scene = 'depths';
-  gs.drops = []; gs.backpackOpen = false; gs.dragState = null; gs.backpackItemRects = []; gs.enemies = [];
-  gs.worldWidth = Math.max(W * 2, 3900);
-  const groundY = H - 150;
-  // upward terrain: return ledge -> flat floor -> staircase -> plateau -> the big pit at the end
-  gs.platforms = [
-    { x: 0, y: groundY - 70, width: 150, height: 20 },     // low ledge for the return entrance (left)
-    { x: 0, y: groundY, width: 3320, height: 20 },         // bottom floor (up to the pit)
-    { x: 1900, y: groundY - 90, width: 190, height: 20 },  // stair 1
-    { x: 2090, y: groundY - 180, width: 190, height: 20 }, // stair 2
-    { x: 2280, y: groundY - 270, width: 190, height: 20 }, // stair 3
-    { x: 2470, y: groundY - 300, width: 850, height: 20 }, // plateau (up to the pit's near edge)
-    { x: 3620, y: groundY - 300, width: 280, height: 20 }  // pit's far rim
-  ];
-  // mutant crawlers wander the bottom floor, kept clear of the pit
-  for (let i = 0; i < DEPTHS_CRAWLER_COUNT; i++) {
-    gs.enemies.push(makeCrawler(400 + i * 500, groundY, 0, 3300));
-  }
-  gs.houses = [];
-  gs.npc = { id: 'guard', name: '村庄守卫', x: 3200, y: groundY - 300 }; // guard beside the big pit (talk with ↑)
-  gs.dialogue = null;
-  gs.campfire = null;
-  gs.caveX = -1;
-  gs.gasX = GAS_START_X;
-  gs.rocks = [];
-  gs.boss = null;
-  gs.wall = null;
-  gs.wallX = 0;
-  gs.spawn = { x: 200, y: groundY - PLAYER_RADIUS };
-  gs.player.x = gs.spawn.x;
-  gs.player.y = gs.spawn.y;
-  gs.player.vx = 0;
-  gs.player.vy = 0;
-}
-
-// Upper layer of the new map (reached by falling into the depths' big pit).
-function setupUpperScene(gs) {
-  gs.scene = 'upper';
-  gs.drops = []; gs.backpackOpen = false; gs.dragState = null; gs.backpackItemRects = []; gs.enemies = [];
-  gs.worldWidth = Math.max(W * 2, 7200);
-  const groundY = H - 150;
-  // flat ground plus floating platforms, evenly spaced across the doubled map
-  gs.platforms = [{ x: 0, y: groundY, width: gs.worldWidth, height: 20 }];
-  const airHeights = [120, 180, 150, 200, 130, 175, 160, 210, 125, 185, 145, 195, 135, 170];
-  for (let i = 0; i < airHeights.length; i++) {
-    gs.platforms.push({ x: 300 + i * 480, y: groundY - airHeights[i], width: 170, height: 18 });
-  }
-  // seed a few enemies, then keep respawning up to the caps
-  for (let i = 0; i < UPPER_CRAWLER_INITIAL; i++) {
-    gs.enemies.push(makeCrawler(400 + Math.random() * (gs.worldWidth - 800), groundY));
-  }
-  for (let i = 0; i < UPPER_BAT_INITIAL; i++) {
-    gs.enemies.push(makeBat(400 + Math.random() * (gs.worldWidth - 800), H * 0.35));
-  }
-  gs.spawnTimer = ENEMY_SPAWN_INTERVAL;
-  gs.houses = [];
-  gs.npc = null;
-  gs.dialogue = null;
-  gs.campfire = null;
-  gs.caveX = -1;
-  gs.gasX = GAS_START_X;
-  gs.rocks = [];
-  gs.boss = null;
-  gs.wall = null;
-  gs.wallX = 0;
-  // random teleport: land at a random x, falling from the air
-  gs.spawn = { x: 250 + Math.random() * (gs.worldWidth - 500), y: 30 };
-  gs.player.x = gs.spawn.x;
-  gs.player.y = gs.spawn.y;
-  gs.player.vx = 0;
-  gs.player.vy = 0;
-}
-
-// Player fell through the hole: fade down into the forgotten cave village.
-function enterVillage() {
-  const gs = gameState;
-  if (gs.status !== 'playing' || gs.fade) return;
-  gs.fade = { alpha: 0, dir: 1, action: 'to-village' };
-}
-
-// Player reached the cave entrance at the village's right end: enter the forgotten depths.
-function enterDepths() {
-  const gs = gameState;
-  if (gs.status !== 'playing' || gs.fade) return;
-  gs.fade = { alpha: 0, dir: 1, action: 'to-depths' };
-}
-
-// Player fell into the depths' big pit: random-teleport to the new map's upper layer.
-function enterUpper() {
-  const gs = gameState;
-  if (gs.status !== 'playing' || gs.fade) return;
-  gs.fade = { alpha: 0, dir: 1, action: 'to-upper' };
-}
-
-// Player walked back through the depths' left entrance: return to the village.
-function returnToVillage() {
-  const gs = gameState;
-  if (gs.status !== 'playing' || gs.fade) return;
-  gs.fade = { alpha: 0, dir: 1, action: 'return-village' };
-}
-
-function showTitle(gs, text) {
-  gs.titleText = { text, alpha: 1, timer: 0 };
-}
-
-// Mutant crawler enemy (forgotten depths) — ground-crawling ellipse.
 function makeCrawler(x, groundY, minX, maxX) {
   groundY = (groundY != null) ? groundY : (H - 150);
   return {
     type: 'crawler',
     x,
     y: groundY - 12,              // ellipse center, bottom sits on the ground
-    vx: 0, vy: 0,
-    r: ENEMY_CRAWLER_RADIUS,
-    rx: 30, ry: 12,
+    vx: 0, vy: 0,                 // knockback impulse
+    r: ENEMY_CRAWLER_RADIUS,      // collision radius
+    rx: 30, ry: 12,               // ellipse half-width / half-height
     hp: ENEMY_CRAWLER_HP, maxHp: ENEMY_CRAWLER_HP,
     flashTimer: 0,
     alive: true,
     dir: Math.random() < 0.5 ? -1 : 1,
     dirTimer: ENEMY_CRAWLER_DIR_INTERVAL,
-    groundY,
+    groundY,                      // the ground level this crawler crawls on
     minX: (minX != null) ? minX : 0,
-    maxX: (maxX != null) ? maxX : -1,
+    maxX: (maxX != null) ? maxX : -1, // -1 => wander to the world edge
     bobPhase: Math.random() * Math.PI * 2
   };
 }
@@ -1917,10 +1628,10 @@ function makeOverlord(x, groundY) {
   return {
     type: 'crawler-boss',
     x,
-    y: groundY - OVERLORD_RY,
+    y: groundY - OVERLORD_RY,     // ellipse center sits on the ground
     vx: 0, vy: 0,
-    r: OVERLORD_RADIUS,
-    rx: OVERLORD_RX, ry: OVERLORD_RY,
+    r: OVERLORD_RADIUS,           // collision radius
+    rx: OVERLORD_RX, ry: OVERLORD_RY, // ellipse half-width / half-height
     hp: OVERLORD_HP, maxHp: OVERLORD_HP,
     flashTimer: 0,
     alive: true,
@@ -1939,6 +1650,7 @@ function updateOverlord(gs, e, dt) {
   e.windupPhase += dt * 0.15;
   e.stateTimer -= dt;
   if (e.state === 'windup') {
+    // stationary while white airflow swirls around it
     if (e.stateTimer <= 0) {
       e.state = 'charge';
       e.stateTimer = OVERLORD_CHARGE_FRAMES;
@@ -1956,6 +1668,7 @@ function updateOverlord(gs, e, dt) {
     if (e.stateTimer <= 0) {
       e.state = 'emerge';
       e.stateTimer = OVERLORD_EMERGE_FRAMES;
+      // surface at a random ground spot within the player's view
       const half = W * 0.4;
       const lo = Math.max(OVERLORD_RADIUS, p.x - half);
       const hi = Math.min(gs.worldWidth - OVERLORD_RADIUS, p.x + half);
@@ -1968,85 +1681,6 @@ function updateOverlord(gs, e, dt) {
       e.state = 'windup';
       e.stateTimer = OVERLORD_WINDUP_FRAMES;
     }
-  }
-}
-
-// Upper-layer enemy respawning (crawlers & bats), with the overlord occasionally spawning.
-function updateEnemySpawning(gs, dt) {
-  if (gs.scene !== 'upper') return;
-  gs.spawnTimer -= dt;
-  if (gs.spawnTimer > 0) return;
-  gs.spawnTimer = ENEMY_SPAWN_INTERVAL;
-  let crawlers = 0, bats = 0;
-  for (const e of gs.enemies) {
-    if (!e.alive) continue;
-    if (e.type === 'crawler') crawlers++;
-    else if (e.type === 'bat') bats++;
-  }
-  if (crawlers < UPPER_CRAWLER_MAX) {
-    const hasBoss = gs.enemies.some(e => e.alive && e.type === 'crawler-boss');
-    if (!hasBoss && Math.random() < OVERLORD_SPAWN_CHANCE) {
-      gs.enemies.push(makeOverlord(200 + Math.random() * (gs.worldWidth - 400), H - 150));
-    } else {
-      gs.enemies.push(makeCrawler(200 + Math.random() * (gs.worldWidth - 400), H - 150));
-    }
-  }
-  if (bats < UPPER_BAT_MAX) {
-    gs.enemies.push(makeBat(200 + Math.random() * (gs.worldWidth - 400), H * 0.3 + Math.random() * H * 0.25));
-  }
-}
-
-// ----- Village elder NPC (talk with ↑) -----
-function isNearNpc(gs) {
-  return !!(gs.npc && Math.abs(gs.player.x - gs.npc.x) < 60);
-}
-function talkToNpc() {
-  const gs = gameState;
-  if (!gs || gs.status !== 'playing' || gs.fade || gs.dialogue) return;
-  if (!isNearNpc(gs)) return;
-  const name = gs.player.name || '旅人';
-  if (gs.npc && gs.npc.id === 'guard') {
-    gs.dialogue = {
-      speaker: '村庄守卫',
-      lines: [
-        '你好"' + name + '"，我在村长那里听说你了。',
-        '最近我们地下发生了地震，这个大坑就是这样出现的。',
-        '我的四个同伴掉进去了，出来的只有两人......（神色黯淡）',
-        '出来的同伴说，这个大洞很诡异，虽然他们是从一个地方掉下去的，但最后掉的地方却天差地别。'
-      ],
-      index: 0,
-      first: false
-    };
-  } else if (gs.npcTalked) {
-    gs.dialogue = {
-      speaker: '老者',
-      lines: ['旁边的篝火可以休息，如果你累了，坐在旁边烤烤火吧'],
-      index: 0,
-      first: false
-    };
-  } else {
-    gs.dialogue = {
-      speaker: '老者',
-      lines: [
-        '你好啊"' + name + '"，欢迎来到我们的村落。我是村长。',
-        '在之前，由于村庄过于隐蔽，几乎从未有过外来人到我们这里来。',
-        '可是，最近却接二连三的出现了不少外来人，进来时就满脸惊恐。',
-        '他们说地表涌出了许多毒气，似乎还有一个怪兽。于是他们就逃了下来。',
-        '你也是跟他们类似的原因吧。我本来半信半疑，但最近出现了一些变异的蝙蝠，似乎与毒气有关。',
-        '哎，也不知道世界发生了什么事，祝君一路好运......'
-      ],
-      index: 0,
-      first: true
-    };
-  }
-}
-function advanceDialogue() {
-  const gs = gameState;
-  if (!gs || !gs.dialogue) return;
-  gs.dialogue.index++;
-  if (gs.dialogue.index >= gs.dialogue.lines.length) {
-    if (gs.dialogue.first) gs.npcTalked = true;
-    gs.dialogue = null;
   }
 }
 
@@ -2069,25 +1703,9 @@ function updateEnemies(gs, dt) {
     const e = gs.enemies[i];
     if (!e.alive) { gs.enemies.splice(i, 1); continue; }
     if (e.flashTimer > 0) e.flashTimer -= dt;
-    // crocodiles crawl along the ground toward the player (no flying)
-    if (e.type === 'crocodile') {
-      const groundY = H - 150;
-      const dir = (p.x >= e.x) ? 1 : -1;
-      e.face = dir;
-      e.x += dir * ENEMY_CROC_SPEED * dt;
-      e.y = groundY - e.r;            // stay glued to the floor
-      e.vx = 0; e.vy = 0;
-      // contact: bite the player, then shove the croc back so it can't hit every frame
-      if (Math.hypot(p.x - e.x, p.y - e.y) < e.r + p.radius) {
-        damagePlayer(gs, ENEMY_CROC_DAMAGE);
-        const s = (e.x >= p.x) ? 1 : -1;
-        e.x = p.x + s * (e.r + p.radius + 2);
-        e.y = groundY - e.r;
-      }
-      continue;
-    }
-    // mutant crawlers wander the ground (forgotten depths)
+
     if (e.type === 'crawler') {
+      // wander on the ground, re-picking a random direction every ~5s
       e.dirTimer -= dt;
       if (e.dirTimer <= 0) {
         e.dirTimer = ENEMY_CRAWLER_DIR_INTERVAL;
@@ -2098,28 +1716,20 @@ function updateEnemies(gs, dt) {
       const hi = (e.maxX >= 0 ? e.maxX : gs.worldWidth) - e.r;
       if (e.x < lo) { e.x = lo; e.dir = 1; }
       if (e.x > hi) { e.x = hi; e.dir = -1; }
-      e.y = e.groundY - e.ry;
-      // contact damage
-      if (Math.hypot(p.x - e.x, p.y - e.y) < e.r + p.radius) {
-        damagePlayer(gs, ENEMY_CRAWLER_DAMAGE);
-        const away = Math.hypot(e.x - p.x, e.y - p.y) || 1;
-        e.x = p.x + ((e.x - p.x) / away) * (e.r + p.radius + 2);
-        e.y = p.y + ((e.y - p.y) / away) * (e.r + p.radius + 2);
-      }
-      continue;
-    }
-    // crawler overlord (final boss on the upper layer) — falls through to contact damage below
-    if (e.type === 'crawler-boss') {
+      e.y = e.groundY - e.ry; // stay pinned to its ground level
+    } else if (e.type === 'crawler-boss') {
       updateOverlord(gs, e, dt);
+    } else {
+      // fly slowly toward the player
+      let dx = p.x - e.x, dy = p.y - e.y;
+      let len = Math.hypot(dx, dy);
+      if (len > 1) {
+        e.x += (dx / len) * ENEMY_FLY_SPEED * dt;
+        e.y += (dy / len) * ENEMY_FLY_SPEED * dt;
+      }
     }
-    // fly slowly toward the player
-    let dx = p.x - e.x, dy = p.y - e.y;
-    let len = Math.hypot(dx, dy);
-    if (len > 1) {
-      e.x += (dx / len) * ENEMY_FLY_SPEED * dt;
-      e.y += (dy / len) * ENEMY_FLY_SPEED * dt;
-    }
-    // knockback impulse (decays)
+
+    // knockback impulse (decays) — skipped for the overlord (its AI owns its position)
     if (e.type !== 'crawler-boss') {
       e.x += e.vx * dt;
       e.y += e.vy * dt;
@@ -2127,14 +1737,11 @@ function updateEnemies(gs, dt) {
       e.vy *= ENEMY_KNOCKBACK_DECAY;
     }
     e.bobPhase += dt * 0.1;
-    // contact: damage the player, then bounce the bat away so it can't hit every frame
-    dx = p.x - e.x; dy = p.y - e.y;
+
+    // contact: damage the player, then bounce the enemy away so it can't hit every frame
+    const dx = p.x - e.x, dy = p.y - e.y;
     if (!e.buried && Math.hypot(dx, dy) < e.r + p.radius) {
-      const dmg = e.type === 'crocodile' ? ENEMY_CROC_DAMAGE
-                : e.type === 'crawler' ? ENEMY_CRAWLER_DAMAGE
-                : e.type === 'crawler-boss' ? OVERLORD_DAMAGE
-                : ENEMY_BAT_DAMAGE;
-      damagePlayer(gs, dmg);
+      damagePlayer(gs, e.type === 'crawler' ? ENEMY_CRAWLER_DAMAGE : (e.type === 'crawler-boss' ? OVERLORD_DAMAGE : ENEMY_BAT_DAMAGE));
       if (e.type !== 'crawler-boss') {
         const away = Math.hypot(e.x - p.x, e.y - p.y) || 1;
         e.vx = ((e.x - p.x) / away) * ENEMY_KNOCKBACK * 1.6;
@@ -2143,6 +1750,31 @@ function updateEnemies(gs, dt) {
         e.y = p.y + ((e.y - p.y) / away) * (e.r + p.radius + 2);
       }
     }
+  }
+}
+
+function updateEnemySpawning(gs, dt) {
+  if (gs.scene !== 'upper') return;
+  gs.spawnTimer -= dt;
+  if (gs.spawnTimer > 0) return;
+  gs.spawnTimer = ENEMY_SPAWN_INTERVAL;
+  let crawlers = 0, bats = 0;
+  for (const e of gs.enemies) {
+    if (!e.alive) continue;
+    if (e.type === 'crawler') crawlers++;
+    else if (e.type === 'bat') bats++;
+  }
+  if (crawlers < UPPER_CRAWLER_MAX) {
+    const hasBoss = gs.enemies.some(e => e.alive && e.type === 'crawler-boss');
+    if (!hasBoss && Math.random() < OVERLORD_SPAWN_CHANCE) {
+      // a crawler spawn occasionally becomes the overlord
+      gs.enemies.push(makeOverlord(200 + Math.random() * (gs.worldWidth - 400), H - 150));
+    } else {
+      gs.enemies.push(makeCrawler(200 + Math.random() * (gs.worldWidth - 400), H - 150));
+    }
+  }
+  if (bats < UPPER_BAT_MAX) {
+    gs.enemies.push(makeBat(200 + Math.random() * (gs.worldWidth - 400), H * 0.3 + Math.random() * H * 0.25));
   }
 }
 
@@ -2188,7 +1820,6 @@ function pickUpItem(gs, itemId) {
   gs.inventory[itemId] = (gs.inventory[itemId] || 0) + 1;
   if (!gs.backpackUnlocked) gs.backpackUnlocked = true;
   gs.pickups.push({ text: def.name + '（' + itemCategoryLabel(def.category) + '）', timer: 150 });
-  saveServerProgress(); // mirror the new gear to the cloud immediately
 }
 
 function toggleBackpack() {
@@ -2206,10 +1837,10 @@ function tryAttack() {
   if (gs.attack) return; // one slash at a time
   const def = ITEM_DEFS[itemId];
   const range = def.range || PLAYER_RADIUS * 2;
-  const damage = def.damage || 0;
+  const damage = (def.damage || 0) + (gs.weaponSpike ? 3 : 0);
   gs.attack = { timer: ATTACK_DURATION, duration: ATTACK_DURATION, dir: gs.player.face, range };
   // resolve the hit immediately: enemies in front, within range, take damage + flash
-  attackHitEnemies(gs, range, damage, itemId);
+  attackHitEnemies(gs, range, damage);
 }
 
 // ----- Cave drawing -----
@@ -2381,10 +2012,8 @@ async function initGame(playerName) {
   inGame = true;
   resizeCanvases();
 
-  // Admin accounts get one-click level teleport buttons.
-  // 管理员状态由数据库驱动（通过管理面板设置），硬编码种子账号作为兜底。
-  const seedAdmins = ['renxt', 'yan', 'admin'];
-  const isAdmin = _isAdmin || seedAdmins.includes((playerName || '').trim().toLowerCase());
+  // "renxt" is the admin account: gets one-click level teleport buttons.
+  const isAdmin = (playerName || '').trim().toLowerCase() === 'renxt';
 
   const player = {
     x: 0, y: 0,
@@ -2401,7 +2030,8 @@ async function initGame(playerName) {
 
   function keyDown(e) {
     const k = e.key;
-    // 对话进行中：空格/回车推进对话，屏蔽其他输入
+
+    // while talking: Space/Enter advances to the next line (all other input is blocked)
     if (gameState && gameState.dialogue) {
       if (k === ' ' || e.code === 'Space' || k === 'Enter') {
         if (!e.repeat) advanceDialogue();
@@ -2409,9 +2039,10 @@ async function initGame(playerName) {
       }
       return;
     }
+
     if (k === 'ArrowLeft' || k === 'a' || k === 'A') input.left = true;
     if (k === 'ArrowRight' || k === 'd' || k === 'D') input.right = true;
-    // ↑ near NPC 对话（不跳跃）；↑ 在篝火旁存档；否则 ↑/Space/W 跳跃
+    // ↑ near the NPC talks (and doesn't jump); ↑ near the campfire saves
     const talkingToNpc = (k === 'ArrowUp') && gameState && isNearNpc(gameState);
     const savingAtCampfire = (k === 'ArrowUp') && gameState && isNearCampfire(gameState);
     if (talkingToNpc) {
@@ -2425,7 +2056,6 @@ async function initGame(playerName) {
     }
     // allow continuing from game-over with Space / Enter
     if (gameState && gameState.status === 'gameover' && (k === ' ' || k === 'Enter')) continueRespawn();
-    if (gameState && gameState.status === 'victory' && (k === ' ' || k === 'Enter')) restartFromChase();
     // open/close the backpack (once unlocked)
     if (k === 'z' || k === 'Z') toggleBackpack();
     // attack with the equipped weapon
@@ -2485,7 +2115,7 @@ async function initGame(playerName) {
     if (!gs || !gs.backpackOpen || gs.fade) return;
     if (!gs.backpackItemRects) return;
     for (const it of gs.backpackItemRects) {
-      if (it.category === 'weapon' &&
+      if ((it.category === 'weapon' || it.itemId === 'crawler-spike') &&
           e.clientX >= it.x && e.clientX <= it.x + it.w &&
           e.clientY >= it.y && e.clientY <= it.y + it.h) {
         gs.dragState = { itemId: it.itemId, x: e.clientX, y: e.clientY };
@@ -2500,10 +2130,26 @@ async function initGame(playerName) {
   function mouseUp(e) {
     const gs = gameState;
     if (!gs || !gs.dragState) return;
+    const dragged = gs.dragState.itemId;
+    const sp = gs.weaponSpikeSlotRect;
+    // spike sub-slot (top-right of the weapon slot) — accepts only the crawler spike
+    if (dragged === 'crawler-spike' && sp &&
+        e.clientX >= sp.x && e.clientX <= sp.x + sp.w &&
+        e.clientY >= sp.y && e.clientY <= sp.y + sp.h) {
+      if (gs.weaponSpike) {
+        gs.inventory[gs.weaponSpike] = (gs.inventory[gs.weaponSpike] || 0) + 1;
+      }
+      gs.inventory[dragged] = (gs.inventory[dragged] || 0) - 1;
+      if (gs.inventory[dragged] <= 0) delete gs.inventory[dragged];
+      gs.weaponSpike = dragged;
+      gs.dragState = null;
+      return;
+    }
     const r = gs.weaponSlotRect;
-    if (r && e.clientX >= r.x && e.clientX <= r.x + r.w &&
+    if (dragged !== 'crawler-spike' && r &&
+        e.clientX >= r.x && e.clientX <= r.x + r.w &&
         e.clientY >= r.y && e.clientY <= r.y + r.h) {
-      const newId = gs.dragState.itemId;
+      const newId = dragged;
       // return the previously-equipped weapon to the backpack
       if (gs.weaponSlot) {
         gs.inventory[gs.weaponSlot] = (gs.inventory[gs.weaponSlot] || 0) + 1;
@@ -2562,11 +2208,14 @@ async function initGame(playerName) {
     rocks: [], boss: null, bossTriggerX: 0, continueRect: null,
     wall: null, wallX: 0,
     isAdmin, adminButtons: [],
-    drops: [], inventory: {}, weaponSlot: null,
+    drops: [], inventory: {}, weaponSlot: null, weaponSpike: null,
     backpackUnlocked: false, backpackOpen: false,
-    pickups: [], backpackBtnRect: null, weaponSlotRect: null, backpackItemRects: [], dragState: null,
+    pickups: [], backpackBtnRect: null, weaponSlotRect: null, weaponSpikeSlotRect: null, backpackItemRects: [], dragState: null,
     attack: null,
-    enemies: [], campfire: null, healing: false,
+    enemies: [], campfire: null, healing: false, spawnTimer: 0,
+    houses: [], villageTitleShown: false, titleText: null,
+    respawnScene: null, respawnX: null,
+    npc: null, dialogue: null, npcTalked: false,
     status: 'playing', statusTimer: 0, savingTimer: 0, shakeTimer: 0,
     fade: null,
     lastTime: performance.now(), running: true,
@@ -2584,21 +2233,31 @@ async function initGame(playerName) {
     }
   };
 
-  showAdminButton(); // 管理员账户显示「管理面板」按钮
-
   // restore saved inventory / backpack / equipped weapon
   const savedInfo = loadInventory(playerName);
   if (savedInfo) {
     gameState.inventory = savedInfo.inventory || {};
     gameState.weaponSlot = savedInfo.weaponSlot || null;
+    gameState.weaponSpike = savedInfo.weaponSpike || null;
     gameState.backpackUnlocked = !!(savedInfo.backpackUnlocked || Object.keys(gameState.inventory).length);
+    gameState.respawnScene = savedInfo.respawnScene || null;
+    gameState.respawnX = (savedInfo.respawnX != null) ? savedInfo.respawnX : null;
+    gameState.npcTalked = !!savedInfo.npcTalked;
   }
 
-  // Start in the furthest scene this player already reached.
-  if (hasEnteredLevel4(playerName)) setupLevel4Scene(gameState);
-  else if (hasEnteredLevel2(playerName)) setupLevel2Scene(gameState);
+  // Resume into the scene the player last saved at (a campfire). Scenes with no
+  // campfire are only reached by re-entering, so fall back to the cave flag.
+  const respawnScene = gameState.respawnScene;
+  if (respawnScene === 'level2') setupLevel2Scene(gameState);
+  else if (respawnScene === 'village') setupVillageScene(gameState);
   else if (hasEnteredCave(playerName)) setupCaveScene(gameState);
   else setupChaseScene(gameState);
+
+  // resume at the campfire checkpoint if it belongs to this scene
+  if (gameState.respawnScene === gameState.scene && gameState.respawnX != null) {
+    gameState.player.x = gameState.respawnX;
+    gameState.player.y = (H - 150) - PLAYER_RADIUS;
+  }
 
   window.DeepestGame = window.DeepestGame || {};
   window.DeepestGame.lastPlayerX = player.x;
@@ -2676,6 +2335,8 @@ function updatePlaying(gs, dt) {
 
   // enemies (mutant bats)
   updateEnemies(gs, dt);
+  // upper-layer enemy respawning (crawlers & bats)
+  updateEnemySpawning(gs, dt);
 
   // equipped-weapon slash timer
   if (gs.attack) {
@@ -2703,24 +2364,24 @@ function updatePlaying(gs, dt) {
       enterCave(); // reached the cave -> fade into the next scene
     }
   } else if (gs.scene === 'cave') {
+    // cave scene: flat floor, floating rocks, and the boss
     updateCaveScene(gs, dt);
   } else if (gs.scene === 'level2') {
-    updateLevel2Scene(gs, dt);
-  } else if (gs.scene === 'level4') {
-    updateLevel4Scene(gs, dt);
+    // fell through the hole -> down into the forgotten cave village
+    if (p.y - p.radius > H - 90) enterVillage();
   } else if (gs.scene === 'village') {
+    // show the title once the player crosses into the village
     if (!gs.villageTitleShown && p.x >= VILLAGE_ENTER_X) {
       gs.villageTitleShown = true;
       showTitle(gs, '遗忘的山洞村庄');
     }
+    // cave entrance at the right end leads into the forgotten depths
     if (p.x >= VILLAGE_RETURN_X) enterDepths();
   } else if (gs.scene === 'depths') {
+    // jump onto the low ledge and walk into the cave mouth (left edge) to return
     if (p.x <= DEPTHS_RETURN_X && p.y < (H - 150) - 40) returnToVillage();
+    // fall into the big pit -> random teleport to the upper layer
     if (p.y - p.radius > H - 90) enterUpper();
-  } else if (gs.scene === 'upper') {
-    updateEnemySpawning(gs, dt);
-  } else {
-    updateCaveScene(gs, dt);
   }
 }
 
@@ -2740,7 +2401,8 @@ function gameLoop(now) {
 
   if (gs.savingTimer > 0) gs.savingTimer -= dt;
   if (gs.shakeTimer > 0) gs.shakeTimer -= dt;
-  // 村庄标题文字：停留片刻后淡出
+
+  // village title text: hold briefly, then fade out
   if (gs.titleText) {
     gs.titleText.timer += dt;
     const hold = 60, fadeDur = 100;
@@ -2812,6 +2474,17 @@ function drawCampfire(cam) {
     gctx.textBaseline = 'bottom';
     gctx.fillText('按↑即可存档', cx, cy - 38);
   }
+}
+
+function drawHole(cam) {
+  const groundY = H - 150;
+  const hx = HOLE_X - cam;
+  // dark pit below the gap in the ground
+  gctx.fillStyle = '#030304';
+  gctx.fillRect(hx, groundY, HOLE_WIDTH, H - groundY);
+  gctx.strokeStyle = 'rgba(0,0,0,0.6)';
+  gctx.lineWidth = 2;
+  gctx.strokeRect(hx, groundY, HOLE_WIDTH, H - groundY);
 }
 
 function drawVillage(cam) {
@@ -2994,168 +2667,6 @@ function drawDialogue() {
   }
 }
 
-function drawOverlord(e, sx) {
-  if (e.buried) {
-    // a faint dirt mound marks where it dug in
-    gctx.beginPath();
-    gctx.ellipse(sx, e.groundY - 5, 34, 8, 0, 0, Math.PI * 2);
-    gctx.fillStyle = '#16110c';
-    gctx.fill();
-    return;
-  }
-  const sy = e.y + Math.sin(e.bobPhase) * 2;
-  let fill = '#0c1f42';
-  if (e.flashTimer > 0) {
-    const blink = (Math.floor(e.flashTimer / 3) % 2) === 0;
-    fill = blink ? '#ffffff' : '#0c1f42';
-  }
-  // swirling white airflow while winding up (stationary)
-  if (e.state === 'windup') {
-    for (let k = 0; k < 6; k++) {
-      const a = e.windupPhase + k * (Math.PI * 2 / 6);
-      const rr = e.r + 14 + Math.sin(e.windupPhase * 2 + k) * 7;
-      const ax = sx + Math.cos(a) * rr;
-      const ay = sy + Math.sin(a) * rr * 0.5;
-      gctx.beginPath();
-      gctx.arc(ax, ay, 5, 0, Math.PI * 2);
-      gctx.fillStyle = 'rgba(255,255,255,0.35)';
-      gctx.fill();
-    }
-  }
-  // huge dark-blue ellipse, same colour as the small crawlers
-  gctx.beginPath();
-  gctx.ellipse(sx, sy, e.rx, e.ry, 0, 0, Math.PI * 2);
-  gctx.fillStyle = fill;
-  gctx.fill();
-  gctx.strokeStyle = 'rgba(4,8,20,0.9)';
-  gctx.lineWidth = 3;
-  gctx.stroke();
-}
-
-// ----- Player appearance helpers -----
-function hexToRgb(hex) {
-  if (typeof hex !== 'string') return null;
-  let h = hex.replace('#', '');
-  if (h.length === 3) h = h.split('').map(c => c + c).join('');
-  if (h.length !== 6) return null;
-  const n = parseInt(h, 16);
-  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
-}
-// amt > 0 lightens toward white, amt < 0 darkens toward black
-function shade(hex, amt) {
-  const c = hexToRgb(hex);
-  if (!c) return hex;
-  const f = (v) => Math.max(0, Math.min(255, Math.round(v + amt * 255)));
-  const to2 = (v) => f(v).toString(16).padStart(2, '0');
-  return '#' + to2(c.r) + to2(c.g) + to2(c.b);
-}
-function roundRectPath(ctx, x, y, w, h, r) {
-  r = Math.min(r, w / 2, h / 2);
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-}
-
-// Draw the player as a small "survivor" character (glow, body, head, face).
-// Keeps the original collision circle (p.radius) as its footprint.
-function drawPlayer(cam, p) {
-  const x = p.x - cam;
-  const y = p.y;
-  const r = p.radius;
-  const face = (p.face >= 0) ? 1 : -1;
-  const flashing = p.invTimer > 0 && (Math.floor(p.invTimer / 4) % 2) === 0;
-  const base = flashing ? '#ff7a7a' : (p.color || '#ffffff');
-
-  gctx.save();
-
-  // ground shadow
-  gctx.save();
-  gctx.globalAlpha = 0.28;
-  gctx.fillStyle = '#000';
-  gctx.beginPath();
-  gctx.ellipse(x, y + r - 2, r * 0.85, r * 0.28, 0, 0, Math.PI * 2);
-  gctx.fill();
-  gctx.restore();
-
-  // soft aura
-  const glow = gctx.createRadialGradient(x, y, r * 0.3, x, y, r * 1.7);
-  glow.addColorStop(0, flashing ? 'rgba(255,90,90,0.55)' : 'rgba(120,200,255,0.32)');
-  glow.addColorStop(1, 'rgba(0,0,0,0)');
-  gctx.fillStyle = glow;
-  gctx.beginPath();
-  gctx.arc(x, y, r * 1.7, 0, Math.PI * 2);
-  gctx.fill();
-
-  // body (rounded capsule) with vertical gradient shading
-  const bodyTop = y - r * 0.55;
-  const bodyBot = y + r;
-  const bodyW = r * 0.92;
-  const bodyGrad = gctx.createLinearGradient(0, bodyTop, 0, bodyBot);
-  bodyGrad.addColorStop(0, shade(base, 0.22));
-  bodyGrad.addColorStop(1, shade(base, -0.28));
-  gctx.fillStyle = bodyGrad;
-  gctx.beginPath();
-  roundRectPath(gctx, x - bodyW, bodyTop, bodyW * 2, bodyBot - bodyTop, r * 0.5);
-  gctx.fill();
-
-  // glowing chest core (sci-fi survivor accent)
-  gctx.fillStyle = flashing ? 'rgba(255,210,210,0.95)' : 'rgba(150,225,255,0.95)';
-  gctx.beginPath();
-  gctx.arc(x, y + r * 0.18, r * 0.16, 0, Math.PI * 2);
-  gctx.fill();
-
-  // head
-  const headR = r * 0.6;
-  const headY = bodyTop - headR * 0.15;
-  gctx.fillStyle = shade(base, 0.12);
-  gctx.beginPath();
-  gctx.arc(x, headY, headR, 0, Math.PI * 2);
-  gctx.fill();
-
-  // hood / cloak shade on top of the head
-  gctx.fillStyle = shade(base, -0.18);
-  gctx.beginPath();
-  gctx.arc(x, headY - headR * 0.15, headR * 0.95, Math.PI * 1.05, Math.PI * 1.95);
-  gctx.fill();
-
-  // eyes (look toward facing direction)
-  const eyeY = headY - headR * 0.05;
-  const eyeDX = headR * 0.36;
-  const eyeR = headR * 0.17;
-  const ex1 = x + face * eyeDX - eyeDX * 0.5;
-  const ex2 = x + face * eyeDX + eyeDX * 0.5;
-  gctx.fillStyle = '#1b1b22';
-  gctx.beginPath();
-  gctx.arc(ex1, eyeY, eyeR, 0, Math.PI * 2);
-  gctx.arc(ex2, eyeY, eyeR, 0, Math.PI * 2);
-  gctx.fill();
-  // eye glints
-  gctx.fillStyle = 'rgba(255,255,255,0.9)';
-  gctx.beginPath();
-  gctx.arc(ex1 + 1, eyeY - 1, eyeR * 0.4, 0, Math.PI * 2);
-  gctx.arc(ex2 + 1, eyeY - 1, eyeR * 0.4, 0, Math.PI * 2);
-  gctx.fill();
-
-  // little smile
-  gctx.strokeStyle = 'rgba(0,0,0,0.45)';
-  gctx.lineWidth = 2;
-  gctx.beginPath();
-  gctx.arc(x + face * headR * 0.1, headY + headR * 0.28, headR * 0.32, 0.15 * Math.PI, 0.85 * Math.PI);
-  gctx.stroke();
-
-  // outline
-  gctx.strokeStyle = 'rgba(0,0,0,0.35)';
-  gctx.lineWidth = 2;
-  gctx.beginPath();
-  gctx.arc(x, headY, headR, 0, Math.PI * 2);
-  gctx.stroke();
-
-  gctx.restore();
-}
-
 function drawGameScene() {
   gctx.clearRect(0, 0, W, H);
   const gs = gameState;
@@ -3170,20 +2681,27 @@ function drawGameScene() {
   gctx.translate(shakeX, shakeY);
   const cam = (window.DeepestGame && window.DeepestGame.cameraX) || 0;
 
-  // platforms
+  // platforms (ground-level platforms are filled solid down to the bottom)
   for (let plat of gs.platforms) {
     const sx = Math.round(plat.x - cam);
     const sy = Math.round(plat.y);
+    const isGround = plat.y >= H - 160;
     gctx.fillStyle = '#2a2a2a';
-    gctx.fillRect(sx, sy, plat.width, plat.height);
+    if (isGround) {
+      gctx.fillRect(sx, sy, plat.width, H - sy);
+    } else {
+      gctx.fillRect(sx, sy, plat.width, plat.height);
+    }
     gctx.fillStyle = 'rgba(255,255,255,0.05)';
     gctx.fillRect(sx, sy, plat.width, 3);
-    gctx.strokeStyle = 'rgba(255,255,255,0.06)';
-    gctx.lineWidth = 1;
-    gctx.strokeRect(sx + 0.5, sy + 0.5, plat.width - 1, plat.height - 1);
+    if (!isGround) {
+      gctx.strokeStyle = 'rgba(255,255,255,0.06)';
+      gctx.lineWidth = 1;
+      gctx.strokeRect(sx + 0.5, sy + 0.5, plat.width - 1, plat.height - 1);
+    }
   }
 
-  // cave goal + poison gas only exist in the chase scene
+  // scene-specific world objects
   if (gs.scene === 'chase') {
     drawCave(cam);
     drawGas(cam);
@@ -3191,6 +2709,8 @@ function drawGameScene() {
     drawRocks(cam);
     drawWall(cam);
     drawBoss(cam);
+  } else if (gs.scene === 'level2') {
+    drawHole(cam);
   } else if (gs.scene === 'village') {
     drawVillage(cam);
     drawVillageReturn(cam);
@@ -3207,11 +2727,20 @@ function drawGameScene() {
 
   // campfire save point (level 3)
   drawCampfire(cam);
+
+  // village elder NPC
   drawNpc(cam);
 
-  // player character (flashes red a few times while invulnerable after being hurt)
+  // player (flashes red a few times while invulnerable after being hurt)
   const p = gs.player;
-  drawPlayer(cam, p);
+  gctx.beginPath();
+  gctx.fillStyle = p.color;
+  if (p.invTimer > 0 && (Math.floor(p.invTimer / 4) % 2) === 0) gctx.fillStyle = '#ff5a5a';
+  gctx.arc(p.x - cam, p.y, p.radius, 0, Math.PI * 2);
+  gctx.fill();
+  gctx.strokeStyle = 'rgba(0,0,0,0.3)';
+  gctx.lineWidth = 2;
+  gctx.stroke();
 
   // name label
   gctx.font = '15px system-ui, -apple-system, "Segoe UI", Roboto, Arial';
@@ -3241,29 +2770,19 @@ function drawGameScene() {
     else drawBackpackButton();
   }
 
-  // bottom-left controls hint (attack + backpack)
-  if (gs.status === 'playing') {
-    const hx = 14;
-    const hy = (gs.backpackUnlocked && !gs.backpackOpen) ? H - 70 : H - 14;
-    const weaponDef = gs.weaponSlot ? ITEM_DEFS[gs.weaponSlot] : null;
-    const hint = weaponDef
-      ? 'F 攻击（' + weaponDef.name + '）   ·   Z 背包'
-      : 'F 攻击（未装备武器）   ·   Z 背包';
-    gctx.font = '14px system-ui, -apple-system, "Segoe UI", Roboto, Arial';
-    gctx.textAlign = 'left';
-    gctx.textBaseline = 'bottom';
-    gctx.fillStyle = 'rgba(255,255,255,0.82)';
-    gctx.fillText(hint, hx, hy);
-  }
-
   // status overlays
   if (gs.status === 'gameover') {
     drawCenterText('GAME OVER', '#ff5a5a', 48, -24);
     drawContinueButton();
   }
 
-  if (gs.status === 'victory') {
-    drawVictory();
+  // "Saving…" indicator (bottom-right) while writing to localStorage
+  if (gs.savingTimer > 0) {
+    gctx.font = '14px system-ui, -apple-system, "Segoe UI", Roboto, Arial';
+    gctx.fillStyle = 'rgba(255,255,255,0.85)';
+    gctx.textAlign = 'right';
+    gctx.textBaseline = 'bottom';
+    gctx.fillText('Saving…', W - 14, H - 40);
   }
 
   // village title text (white, centered, fades out)
@@ -3280,15 +2799,6 @@ function drawGameScene() {
 
   // dialogue box (top of screen) while talking to the village elder
   drawDialogue();
-
-  // "Saving…" indicator (bottom-right) while writing to localStorage
-  if (gs.savingTimer > 0) {
-    gctx.font = '14px system-ui, -apple-system, "Segoe UI", Roboto, Arial';
-    gctx.fillStyle = 'rgba(255,255,255,0.85)';
-    gctx.textAlign = 'right';
-    gctx.textBaseline = 'bottom';
-    gctx.fillText('Saving…', W - 14, H - 40);
-  }
 
   // fade overlay for scene transitions
   if (gs.fade) {
@@ -3351,16 +2861,6 @@ function drawCenterText(text, color, size, offsetY) {
   gctx.fillText(text, W / 2, H / 2 + offsetY);
 }
 
-function drawVictory() {
-  gctx.save();
-  gctx.fillStyle = 'rgba(0,0,0,0.55)';
-  gctx.fillRect(0, 0, W, H);
-  drawCenterText('通关！', '#9be36b', 56, -42);
-  drawCenterText('你击败了鳄鱼，获得 鳄鱼鳞片', '#ffffff', 22, 10);
-  drawCenterText('按 Enter / 空格 重新开始', 'rgba(255,255,255,0.8)', 18, 50);
-  gctx.restore();
-}
-
 function roundRectPath(ctx, x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
@@ -3399,7 +2899,9 @@ function drawAdminPanel() {
     { scene: 'chase', label: '关卡1 · 毒气' },
     { scene: 'cave', label: '关卡2 · 洞穴' },
     { scene: 'level2', label: '关卡3 · 平原' },
-    { scene: 'level4', label: '关卡4 · 沼泽' }
+    { scene: 'village', label: '山洞村庄' },
+    { scene: 'depths', label: '山洞深处' },
+    { scene: 'upper', label: '上层地图' }
   ];
   const w = 156, h = 38, gap = 10, x = 14, startY = 14;
   gs.adminButtons = [];
@@ -3445,29 +2947,36 @@ function drawEnemies(cam) {
     if (!e.alive) continue;
     const sx = e.x - cam;
     if (sx < -e.r * 2 || sx > W + e.r * 2) continue;
-    const sy = e.y + Math.sin(e.bobPhase) * 4;
-    let fill = '#5a3a28'; // dark brown placeholder (image later)
-    if (e.flashTimer > 0) {
-      const blink = (Math.floor(e.flashTimer / 3) % 2) === 0;
-      fill = blink ? '#ffffff' : '#5a3a28';
-    }
-    if (e.type === 'crocodile') { drawCrocodile(sx, sy, e, fill); continue; }
+
     if (e.type === 'crawler') {
-      let cfill = '#0c1f42';
+      // very dark blue flat ellipse crawling on the ground
+      const sy = e.y + Math.sin(e.bobPhase) * 1.5;
+      let fill = '#0c1f42';
       if (e.flashTimer > 0) {
         const blink = (Math.floor(e.flashTimer / 3) % 2) === 0;
-        cfill = blink ? '#ffffff' : '#0c1f42';
+        fill = blink ? '#ffffff' : '#0c1f42';
       }
       gctx.beginPath();
       gctx.ellipse(sx, sy, e.rx, e.ry, 0, 0, Math.PI * 2);
-      gctx.fillStyle = cfill;
+      gctx.fillStyle = fill;
       gctx.fill();
       gctx.strokeStyle = 'rgba(4,8,20,0.9)';
       gctx.lineWidth = 2;
       gctx.stroke();
       continue;
     }
-    if (e.type === 'crawler-boss') { drawOverlord(e, sx); continue; }
+
+    if (e.type === 'crawler-boss') {
+      drawOverlord(e, sx);
+      continue;
+    }
+
+    const sy = e.y + Math.sin(e.bobPhase) * 4;
+    let fill = '#5a3a28'; // dark brown placeholder (image later)
+    if (e.flashTimer > 0) {
+      const blink = (Math.floor(e.flashTimer / 3) % 2) === 0;
+      fill = blink ? '#ffffff' : '#5a3a28';
+    }
     // body
     gctx.beginPath();
     gctx.arc(sx, sy, e.r, 0, Math.PI * 2);
@@ -3492,63 +3001,42 @@ function drawEnemies(cam) {
   }
 }
 
-// Draw the ground-crawling crocodile (faces the direction it is moving via e.face).
-function drawCrocodile(cx, cy, e, fill) {
-  gctx.save();
-  gctx.translate(cx, cy);
-  gctx.scale(e.face >= 0 ? 1 : -1, 1);
-  const r = e.r;
-  // tail
-  gctx.fillStyle = fill;
-  gctx.beginPath();
-  gctx.moveTo(-r * 0.8, 0);
-  gctx.quadraticCurveTo(-r * 1.8, -r * 0.2, -r * 2.0, r * 0.2);
-  gctx.quadraticCurveTo(-r * 1.5, r * 0.3, -r * 0.8, r * 0.2);
-  gctx.closePath();
-  gctx.fill();
-  // body
-  gctx.beginPath();
-  gctx.ellipse(0, 0, r * 1.1, r * 0.6, 0, 0, Math.PI * 2);
-  gctx.fillStyle = fill;
-  gctx.fill();
-  gctx.strokeStyle = 'rgba(15,40,20,0.8)';
-  gctx.lineWidth = 2;
-  gctx.stroke();
-  // snout (points in +x after the dir scale)
-  gctx.beginPath();
-  gctx.moveTo(r * 0.9, -r * 0.1);
-  gctx.lineTo(r * 1.7, -r * 0.05);
-  gctx.lineTo(r * 1.7, r * 0.2);
-  gctx.lineTo(r * 0.9, r * 0.25);
-  gctx.closePath();
-  gctx.fillStyle = fill;
-  gctx.fill();
-  gctx.stroke();
-  // teeth
-  gctx.fillStyle = '#f2ead8';
-  for (let i = 0; i < 3; i++) {
-    const tx = r * (1.0 + i * 0.22);
+function drawOverlord(e, sx) {
+  if (e.buried) {
+    // a faint dirt mound marks where it dug in
     gctx.beginPath();
-    gctx.moveTo(tx, r * 0.22);
-    gctx.lineTo(tx + r * 0.08, r * 0.42);
-    gctx.lineTo(tx + r * 0.16, r * 0.22);
-    gctx.closePath();
+    gctx.ellipse(sx, e.groundY - 5, 34, 8, 0, 0, Math.PI * 2);
+    gctx.fillStyle = '#16110c';
     gctx.fill();
+    return;
   }
-  // eye
-  gctx.fillStyle = '#ffd23f';
+  const sy = e.y + Math.sin(e.bobPhase) * 2;
+  let fill = '#0c1f42';
+  if (e.flashTimer > 0) {
+    const blink = (Math.floor(e.flashTimer / 3) % 2) === 0;
+    fill = blink ? '#ffffff' : '#0c1f42';
+  }
+  // swirling white airflow while winding up (stationary)
+  if (e.state === 'windup') {
+    for (let k = 0; k < 6; k++) {
+      const a = e.windupPhase + k * (Math.PI * 2 / 6);
+      const rr = e.r + 14 + Math.sin(e.windupPhase * 2 + k) * 7;
+      const ax = sx + Math.cos(a) * rr;
+      const ay = sy + Math.sin(a) * rr * 0.5;
+      gctx.beginPath();
+      gctx.arc(ax, ay, 5, 0, Math.PI * 2);
+      gctx.fillStyle = 'rgba(255,255,255,0.35)';
+      gctx.fill();
+    }
+  }
+  // huge dark-blue ellipse, same colour as the small crawlers
   gctx.beginPath();
-  gctx.arc(r * 0.45, -r * 0.25, r * 0.12, 0, Math.PI * 2);
-  gctx.fill();
-  gctx.fillStyle = '#111';
-  gctx.beginPath();
-  gctx.arc(r * 0.45, -r * 0.25, r * 0.05, 0, Math.PI * 2);
-  gctx.fill();
-  // legs
+  gctx.ellipse(sx, sy, e.rx, e.ry, 0, 0, Math.PI * 2);
   gctx.fillStyle = fill;
-  gctx.fillRect(-r * 0.3, r * 0.5, r * 0.25, r * 0.35);
-  gctx.fillRect(r * 0.4, r * 0.5, r * 0.25, r * 0.35);
-  gctx.restore();
+  gctx.fill();
+  gctx.strokeStyle = 'rgba(4,8,20,0.9)';
+  gctx.lineWidth = 3;
+  gctx.stroke();
 }
 
 function drawItemGlyph(x, y, itemId, r) {
@@ -3567,6 +3055,27 @@ function drawItemGlyph(x, y, itemId, r) {
     gctx.fillStyle = '#f2ead8';
     gctx.fill();
     gctx.strokeStyle = '#6b6250';
+    gctx.lineWidth = 2;
+    gctx.stroke();
+  } else if (itemId === 'crawler-spike') {
+    // crawler spike: a dark-blue thorn
+    gctx.beginPath();
+    gctx.moveTo(0, -r);
+    gctx.lineTo(r * 0.6, r * 0.55);
+    gctx.lineTo(-r * 0.6, r * 0.55);
+    gctx.closePath();
+    gctx.fillStyle = '#1a3a6b';
+    gctx.fill();
+    gctx.strokeStyle = '#0c1f42';
+    gctx.lineWidth = 2;
+    gctx.stroke();
+  } else if (itemId === 'crawler-scale') {
+    // crawler scale: a dark-blue oval plate
+    gctx.beginPath();
+    gctx.ellipse(0, 0, r * 0.72, r * 0.5, 0, 0, Math.PI * 2);
+    gctx.fillStyle = '#1a3a6b';
+    gctx.fill();
+    gctx.strokeStyle = '#0c1f42';
     gctx.lineWidth = 2;
     gctx.stroke();
   } else {
@@ -3692,6 +3201,27 @@ function drawBackpack() {
   gctx.fillText('武器槽', slotX + slot / 2, slotY + slot + 6);
   if (gs.weaponSlot && ITEM_DEFS[gs.weaponSlot]) {
     drawItemGlyph(slotX + slot / 2, slotY + slot / 2, gs.weaponSlot, 26);
+  }
+
+  // spike sub-slot (top-right corner of the weapon slot): +3 damage with a crawler spike
+  const spike = 30;
+  const spikeX = slotX + slot - spike, spikeY = slotY;
+  gs.weaponSpikeSlotRect = { x: spikeX, y: spikeY, w: spike, h: spike };
+  gctx.fillStyle = 'rgba(130,180,255,0.12)';
+  roundRectPath(gctx, spikeX, spikeY, spike, spike, 6);
+  gctx.fill();
+  gctx.strokeStyle = 'rgba(150,200,255,0.6)';
+  gctx.lineWidth = 2;
+  roundRectPath(gctx, spikeX, spikeY, spike, spike, 6);
+  gctx.stroke();
+  if (gs.weaponSpike && ITEM_DEFS[gs.weaponSpike]) {
+    drawItemGlyph(spikeX + spike / 2, spikeY + spike / 2, gs.weaponSpike, 12);
+  } else {
+    gctx.fillStyle = 'rgba(150,200,255,0.45)';
+    gctx.font = '15px system-ui, -apple-system, "Segoe UI", Roboto, Arial';
+    gctx.textAlign = 'center';
+    gctx.textBaseline = 'middle';
+    gctx.fillText('+', spikeX + spike / 2, spikeY + spike / 2);
   }
 
   // item list (right of the slot), grouped by category
