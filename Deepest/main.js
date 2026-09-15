@@ -2925,19 +2925,53 @@ function drawNpc(cam) {
   const gs = gameState;
   if (!gs.npc) return;
   const cx = gs.npc.x - cam;
-  const cy = gs.npc.y - PLAYER_RADIUS;
+  const groundY = gs.npc.y;
+  const cy = groundY - PLAYER_RADIUS;   // 身体中心高度
   const r = PLAYER_RADIUS;
-  const sides = 8;
+  // 地面阴影
+  gctx.fillStyle = 'rgba(0,0,0,0.28)';
   gctx.beginPath();
-  for (let i = 0; i < sides; i++) {
-    const a = -Math.PI / 2 + (Math.PI * 2 * i) / sides;
-    const px = cx + Math.cos(a) * r;
-    const py = cy + Math.sin(a) * r;
-    if (i === 0) gctx.moveTo(px, py); else gctx.lineTo(px, py);
-  }
-  gctx.closePath();
-  gctx.fillStyle = '#ffffff';
+  gctx.ellipse(cx, groundY - 2, r * 0.9, r * 0.28, 0, 0, Math.PI * 2);
   gctx.fill();
+  // 长袍（暖棕）
+  gctx.fillStyle = '#7a5c3e';
+  gctx.beginPath();
+  gctx.moveTo(cx - r * 0.72, groundY - 2);
+  gctx.lineTo(cx - r * 0.42, cy - r * 0.15);
+  gctx.lineTo(cx + r * 0.42, cy - r * 0.15);
+  gctx.lineTo(cx + r * 0.72, groundY - 2);
+  gctx.closePath();
+  gctx.fill();
+  // 衣领
+  gctx.fillStyle = '#9c7a52';
+  gctx.fillRect(cx - r * 0.42, cy - r * 0.18, r * 0.84, r * 0.16);
+  // 头（肤色）
+  gctx.fillStyle = '#f1c79b';
+  gctx.beginPath();
+  gctx.arc(cx, cy - r * 0.5, r * 0.5, 0, Math.PI * 2);
+  gctx.fill();
+  // 白胡子
+  gctx.fillStyle = '#f3f1ea';
+  gctx.beginPath();
+  gctx.moveTo(cx - r * 0.42, cy - r * 0.28);
+  gctx.quadraticCurveTo(cx, cy + r * 0.02, cx + r * 0.42, cy - r * 0.28);
+  gctx.quadraticCurveTo(cx, cy - r * 0.62, cx - r * 0.42, cy - r * 0.28);
+  gctx.closePath();
+  gctx.fill();
+  // 尖帽
+  gctx.fillStyle = '#3b2f2a';
+  gctx.beginPath();
+  gctx.moveTo(cx - r * 0.55, cy - r * 0.72);
+  gctx.lineTo(cx, cy - r * 1.3);
+  gctx.lineTo(cx + r * 0.55, cy - r * 0.72);
+  gctx.closePath();
+  gctx.fill();
+  gctx.fillStyle = '#5a4a40';
+  gctx.fillRect(cx - r * 0.6, cy - r * 0.78, r * 1.2, r * 0.1);
+  // 眼睛
+  gctx.fillStyle = '#2a211b';
+  gctx.beginPath(); gctx.arc(cx - r * 0.18, cy - r * 0.55, 2.2, 0, Math.PI * 2); gctx.fill();
+  gctx.beginPath(); gctx.arc(cx + r * 0.18, cy - r * 0.55, 2.2, 0, Math.PI * 2); gctx.fill();
 
   // interaction prompt above the NPC when the player is close enough to talk
   if (isNearNpc(gs)) {
@@ -2945,7 +2979,7 @@ function drawNpc(cam) {
     gctx.fillStyle = '#ffd54a';
     gctx.textAlign = 'center';
     gctx.textBaseline = 'bottom';
-    gctx.fillText('按↑进行对话', cx, cy - r - 8);
+    gctx.fillText('按↑进行对话', cx, cy - r * 1.4);
   }
 }
 
@@ -3399,9 +3433,10 @@ function drawAdminPanel() {
     { scene: 'chase', label: '关卡1 · 毒气' },
     { scene: 'cave', label: '关卡2 · 洞穴' },
     { scene: 'level2', label: '关卡3 · 平原' },
-    { scene: 'level4', label: '关卡4 · 沼泽' }
+    { scene: 'level4', label: '关卡4 · 沼泽' },
+    { scene: 'village', label: '关卡5 · 遗失的村庄' }
   ];
-  const w = 156, h = 38, gap = 10, x = 14, startY = 14;
+  const w = 192, h = 38, gap = 10, x = 14, startY = 14;
   gs.adminButtons = [];
   let y = startY;
   for (const e of entries) {
@@ -3468,26 +3503,64 @@ function drawEnemies(cam) {
       continue;
     }
     if (e.type === 'crawler-boss') { drawOverlord(e, sx); continue; }
-    // body
+    // ===== 变异蝙蝠（更精致的形象）=====
+    const flap = Math.sin(e.bobPhase * 1.6) * e.r * 0.5;
+    gctx.strokeStyle = 'rgba(10,6,4,0.85)';
+    gctx.lineWidth = 1.5;
+    // 左膜翼（带指骨与扇动）
+    gctx.fillStyle = fill;
     gctx.beginPath();
-    gctx.arc(sx, sy, e.r, 0, Math.PI * 2);
+    gctx.moveTo(sx - e.r * 0.2, sy - e.r * 0.2);
+    gctx.quadraticCurveTo(sx - e.r * 1.1, sy - e.r * 0.95 + flap, sx - e.r * 1.55, sy - e.r * 0.1);
+    gctx.quadraticCurveTo(sx - e.r * 1.15, sy + e.r * 0.05, sx - e.r * 0.95, sy + e.r * 0.25);
+    gctx.quadraticCurveTo(sx - e.r * 1.25, sy + e.r * 0.5 + flap, sx - e.r * 1.55, sy + e.r * 0.55);
+    gctx.quadraticCurveTo(sx - e.r * 0.95, sy + e.r * 0.4, sx - e.r * 0.2, sy + e.r * 0.2);
+    gctx.closePath();
+    gctx.fill();
+    gctx.stroke();
+    // 右膜翼（镜像）
+    gctx.beginPath();
+    gctx.moveTo(sx + e.r * 0.2, sy - e.r * 0.2);
+    gctx.quadraticCurveTo(sx + e.r * 1.1, sy - e.r * 0.95 - flap, sx + e.r * 1.55, sy - e.r * 0.1);
+    gctx.quadraticCurveTo(sx + e.r * 1.15, sy + e.r * 0.05, sx + e.r * 0.95, sy + e.r * 0.25);
+    gctx.quadraticCurveTo(sx + e.r * 1.25, sy + e.r * 0.5 - flap, sx + e.r * 1.55, sy + e.r * 0.55);
+    gctx.quadraticCurveTo(sx + e.r * 0.95, sy + e.r * 0.4, sx + e.r * 0.2, sy + e.r * 0.2);
+    gctx.closePath();
+    gctx.fill();
+    gctx.stroke();
+    // 毛皮身体
+    gctx.beginPath();
+    gctx.ellipse(sx, sy, e.r * 0.55, e.r * 0.7, 0, 0, Math.PI * 2);
     gctx.fillStyle = fill;
     gctx.fill();
-    gctx.strokeStyle = 'rgba(20,12,6,0.7)';
-    gctx.lineWidth = 2;
     gctx.stroke();
-    // simple flapping wings
-    const flap = Math.sin(e.bobPhase) * e.r * 0.35;
+    // 耳朵
     gctx.beginPath();
-    gctx.moveTo(sx - e.r * 0.3, sy);
-    gctx.lineTo(sx - e.r * 1.3, sy - e.r * 0.4 + flap);
-    gctx.lineTo(sx - e.r * 1.0, sy + e.r * 0.2);
+    gctx.moveTo(sx - e.r * 0.35, sy - e.r * 0.55);
+    gctx.lineTo(sx - e.r * 0.5, sy - e.r * 0.98);
+    gctx.lineTo(sx - e.r * 0.1, sy - e.r * 0.62);
     gctx.closePath();
-    gctx.moveTo(sx + e.r * 0.3, sy);
-    gctx.lineTo(sx + e.r * 1.3, sy - e.r * 0.4 - flap);
-    gctx.lineTo(sx + e.r * 1.0, sy + e.r * 0.2);
+    gctx.moveTo(sx + e.r * 0.35, sy - e.r * 0.55);
+    gctx.lineTo(sx + e.r * 0.5, sy - e.r * 0.98);
+    gctx.lineTo(sx + e.r * 0.1, sy - e.r * 0.62);
     gctx.closePath();
     gctx.fillStyle = fill;
+    gctx.fill();
+    // 红色眼睛
+    gctx.fillStyle = '#ff3b30';
+    gctx.beginPath(); gctx.arc(sx - e.r * 0.2, sy - e.r * 0.12, e.r * 0.13, 0, Math.PI * 2); gctx.fill();
+    gctx.beginPath(); gctx.arc(sx + e.r * 0.2, sy - e.r * 0.12, e.r * 0.13, 0, Math.PI * 2); gctx.fill();
+    // 尖牙
+    gctx.fillStyle = '#fff';
+    gctx.beginPath();
+    gctx.moveTo(sx - e.r * 0.12, sy + e.r * 0.18);
+    gctx.lineTo(sx - e.r * 0.04, sy + e.r * 0.45);
+    gctx.lineTo(sx + e.r * 0.04, sy + e.r * 0.18);
+    gctx.closePath();
+    gctx.moveTo(sx + e.r * 0.12, sy + e.r * 0.18);
+    gctx.lineTo(sx + e.r * 0.04, sy + e.r * 0.45);
+    gctx.lineTo(sx + e.r * 0.2, sy + e.r * 0.18);
+    gctx.closePath();
     gctx.fill();
   }
 }
