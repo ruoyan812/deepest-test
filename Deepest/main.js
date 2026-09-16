@@ -1318,7 +1318,13 @@ function resetLevel() {
   const gs = gameState;
   if (gs.scene === 'cave') setupCaveScene(gs);
   else if (gs.scene === 'level2') setupLevel2Scene(gs);
+  else if (gs.scene === 'level4') setupLevel4Scene(gs);
+  else if (gs.scene === 'village') setupVillageScene(gs);
+  else if (gs.scene === 'depths') setupDepthsScene(gs);
+  else if (gs.scene === 'upper') setupUpperScene(gs);
   else setupChaseScene(gs);
+  // 复活到本关的存档火堆（检查点）；没有火堆的场景则留在关卡起点
+  if (gs.campfire) gs.player.x = gs.campfire.x;
   gs.input.jump = false;
   gs.input.jumpHeld = false;
   gs.player.hp = gs.player.maxHp;
