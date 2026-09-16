@@ -1014,7 +1014,10 @@ const ITEM_DEFS = {
   'crocodile-scale': { name: '鳄鱼鳞片', category: 'weapon', range: 112, damage: 8 },
   'fang-dagger': { name: '蝙蝠尖牙匕首', category: 'weapon', range: 70, damage: 4 },
   'fang-spear': { name: '强化蝠牙长枪', category: 'weapon', range: 110, damage: 6 },
-  'scale-blade': { name: '鳞牙巨剑', category: 'weapon', range: 130, damage: 9 }
+  'scale-blade': { name: '鳞牙巨剑', category: 'weapon', range: 130, damage: 9 },
+  'crawler-scale': { name: '爬行者鳞甲', category: 'material' },
+  'crawler-spike': { name: '爬行者尖刺', category: 'material' },
+  'crawler-claw': { name: '鳞刺利爪', category: 'weapon', range: 120, damage: 7 }
 };
 
 // 合成配方：将材料合成为武器（在背包的「合成台」中点击合成）
@@ -1022,7 +1025,8 @@ const RECIPES = [
   { out: 'fang-dagger', outCount: 1, cost: { 'small-bat-fang': 2 }, name: '蝙蝠尖牙匕首' },
   { out: 'bat-fang',    outCount: 1, cost: { 'small-bat-fang': 3 }, name: '巨型蝙蝠尖牙' },
   { out: 'fang-spear',  outCount: 1, cost: { 'small-bat-fang': 2, 'bat-fang': 1 }, name: '强化蝠牙长枪' },
-  { out: 'scale-blade', outCount: 1, cost: { 'small-bat-fang': 3, 'crocodile-scale': 1 }, name: '鳞牙巨剑' }
+  { out: 'scale-blade', outCount: 1, cost: { 'small-bat-fang': 3, 'crocodile-scale': 1 }, name: '鳞牙巨剑' },
+  { out: 'crawler-claw', outCount: 1, cost: { 'crawler-scale': 2, 'crawler-spike': 1 }, name: '鳞刺利爪' }
 ];
 
 // ----- 融合：对方的新世界（遗忘的山洞村庄 / 深渊 / 上层 / 爬行领主）所需常量 -----
@@ -2552,6 +2556,14 @@ async function initGame(playerName) {
         }
       }
     }
+    if (gs && gs.backpackOpen && gs.disassembleRects) {
+      for (const b of gs.disassembleRects) {
+        if (e.clientX >= b.x && e.clientX <= b.x + b.w && e.clientY >= b.y && e.clientY <= b.y + b.h) {
+          doDisassemble(b.itemId);
+          return;
+        }
+      }
+    }
     if (!gs || gs.fade || gs.backpackOpen) return;
     // backpack button (bottom-left) opens the backpack
     if (gs.backpackUnlocked && gs.backpackBtnRect) {
@@ -3828,10 +3840,29 @@ function doCraft(rc) {
   saveServerProgress();
   gs.pickups.push({ text: '合成了 ' + (ITEM_DEFS[out] ? ITEM_DEFS[out].name : out), timer: 90 });
 }
+function doDisassemble(itemId) {
+  const gs = gameState;
+  if (!gs || gs.fade || !gs.backpackOpen) return;
+  const rc = RECIPES.find(r => r.out === itemId);
+  if (!rc) { gs.pickups.push({ text: '无法拆解（非合成武器）', timer: 90 }); return; }
+  const invN = gs.inventory[itemId] || 0;
+  if (invN <= 0 && gs.weaponSlot !== itemId) {
+    gs.pickups.push({ text: '没有可拆解的该武器', timer: 90 }); return;
+  }
+  if (gs.weaponSlot === itemId && invN <= 0) gs.weaponSlot = null; // 拆下当前装备的武器
+  else {
+    gs.inventory[itemId] = invN - 1;
+    if (gs.inventory[itemId] <= 0) delete gs.inventory[itemId];
+  }
+  for (const id in rc.cost) gs.inventory[id] = (gs.inventory[id] || 0) + rc.cost[id]; // 返还原料
+  savePlayerInfo(gs);
+  saveServerProgress();
+  gs.pickups.push({ text: '已拆解：' + (ITEM_DEFS[itemId] ? ITEM_DEFS[itemId].name : itemId) + '，返还原料', timer: 120 });
+}
 function drawBackpack() {
   const gs = gameState;
   const pw = Math.min(W * 0.84, 760);
-  const ph = Math.min(H * 0.84, 560);
+  const ph = Math.min(H * 0.86, 620);
   const px = (W - pw) / 2;
   const py = (H - ph) / 2;
 
@@ -3893,7 +3924,7 @@ function drawBackpack() {
     listY += 24;
 
     for (const id of items) {
-      if (listY > py + ph - 185) break;
+      if (listY > py + ph - 310) break;
       const def = ITEM_DEFS[id];
       const count = gs.inventory[id];
       const rect = { itemId: id, category: def.category, x: listX, y: listY, w: listW, h: rowH - 4 };
@@ -3924,54 +3955,97 @@ function drawBackpack() {
     drawItemGlyph(gs.dragState.x, gs.dragState.y, gs.dragState.itemId, 24);
   }
 
-  // 合成台（底部固定区域）
+  // 底部区域：合成台（左列） + 拆解台（右列）
   gs.craftRects = [];
-  const craftTop = py + ph - 176;
+  gs.disassembleRects = [];
+  const bottomTop = py + ph - 300;
+  const colGap = 12;
+  const colW = (pw - 32 - colGap) / 2;
+
+  // ---- 合成台（左列） ----
+  const craftX = px + 16;
   gctx.fillStyle = 'rgba(255,255,255,0.07)';
-  roundRectPath(gctx, px + 16, craftTop, pw - 32, 164, 10);
-  gctx.fill();
-  gctx.strokeStyle = 'rgba(255,213,74,0.5)';
-  gctx.lineWidth = 1.5;
-  roundRectPath(gctx, px + 16, craftTop, pw - 32, 164, 10);
-  gctx.stroke();
+  roundRectPath(gctx, craftX, bottomTop, colW, 290, 10); gctx.fill();
+  gctx.strokeStyle = 'rgba(255,213,74,0.5)'; gctx.lineWidth = 1.5;
+  roundRectPath(gctx, craftX, bottomTop, colW, 290, 10); gctx.stroke();
   gctx.fillStyle = '#ffd54a';
   gctx.font = 'bold 16px system-ui, -apple-system, "Segoe UI", Roboto, Arial';
   gctx.textAlign = 'left'; gctx.textBaseline = 'top';
-  gctx.fillText('合成台', px + 30, craftTop + 10);
-  let ry = craftTop + 40;
+  gctx.fillText('合成台', craftX + 14, bottomTop + 10);
+  let ry = bottomTop + 40;
   for (const rc of RECIPES) {
     const can = canCraft(gs, rc);
     gctx.fillStyle = '#fff';
-    gctx.font = '15px system-ui, -apple-system, "Segoe UI", Roboto, Arial';
+    gctx.font = '14px system-ui, -apple-system, "Segoe UI", Roboto, Arial';
     gctx.textAlign = 'left'; gctx.textBaseline = 'middle';
-    gctx.fillText(rc.name, px + 32, ry);
+    gctx.fillText(rc.name, craftX + 14, ry);
     gctx.fillStyle = can ? '#9fe0a0' : '#d98b8b';
-    gctx.font = '13px system-ui, -apple-system, "Segoe UI", Roboto, Arial';
-    let mx = px + 210;
+    gctx.font = '11px system-ui, -apple-system, "Segoe UI", Roboto, Arial';
+    let mx = craftX + 14;
+    const costY = ry + 14;
     for (const id in rc.cost) {
       const need = rc.cost[id];
       const hasN = gs.inventory[id] || 0;
-      const txt = ITEM_DEFS[id].name + '×' + need + (hasN < need ? ' (' + hasN + ')' : '');
-      gctx.fillText(txt, mx, ry);
-      mx += gctx.measureText(txt).width + 18;
+      const txt = ITEM_DEFS[id].name + '×' + need + (hasN < need ? '(' + hasN + ')' : '');
+      gctx.fillText(txt, mx, costY);
+      mx += gctx.measureText(txt).width + 12;
     }
-    const bw = 64, bh = 26, bx = px + pw - 92, by = ry - bh / 2;
+    const bw = 52, bh = 24, bx = craftX + colW - 62, by = ry - bh / 2;
     gctx.fillStyle = can ? '#27ae60' : '#4a4a4a';
     roundRectPath(gctx, bx, by, bw, bh, 6); gctx.fill();
     gctx.fillStyle = '#fff';
-    gctx.font = '14px system-ui, -apple-system, "Segoe UI", Roboto, Arial';
+    gctx.font = '13px system-ui, -apple-system, "Segoe UI", Roboto, Arial';
     gctx.textAlign = 'center'; gctx.textBaseline = 'middle';
     gctx.fillText('合成', bx + bw / 2, ry);
     gctx.textAlign = 'left';
     gs.craftRects.push({ out: rc.out, cost: rc.cost, outCount: rc.outCount || 1, x: bx, y: by, w: bw, h: bh });
-    ry += 33;
+    ry += 50;
+  }
+
+  // ---- 拆解台（右列） ----
+  const disX = craftX + colW + colGap;
+  gctx.fillStyle = 'rgba(255,255,255,0.07)';
+  roundRectPath(gctx, disX, bottomTop, colW, 290, 10); gctx.fill();
+  gctx.strokeStyle = 'rgba(150,200,255,0.5)'; gctx.lineWidth = 1.5;
+  roundRectPath(gctx, disX, bottomTop, colW, 290, 10); gctx.stroke();
+  gctx.fillStyle = '#9bc8ff';
+  gctx.font = 'bold 16px system-ui, -apple-system, "Segoe UI", Roboto, Arial';
+  gctx.textAlign = 'left'; gctx.textBaseline = 'top';
+  gctx.fillText('拆解台', disX + 14, bottomTop + 10);
+  const disassemblable = RECIPES.map(r => r.out).filter(id =>
+    (gs.inventory[id] || 0) > 0 || gs.weaponSlot === id);
+  if (!disassemblable.length) {
+    gctx.fillStyle = '#888';
+    gctx.font = '13px system-ui, -apple-system, "Segoe UI", Roboto, Arial';
+    gctx.textAlign = 'left'; gctx.textBaseline = 'top';
+    gctx.fillText('（暂无合成武器）', disX + 14, bottomTop + 40);
+  } else {
+    let dy = bottomTop + 40;
+    for (const id of disassemblable) {
+      const def = ITEM_DEFS[id];
+      const fromSlot = gs.weaponSlot === id && (gs.inventory[id] || 0) <= 0;
+      gctx.fillStyle = '#fff';
+      gctx.font = '14px system-ui, -apple-system, "Segoe UI", Roboto, Arial';
+      gctx.textAlign = 'left'; gctx.textBaseline = 'middle';
+      gctx.fillText(def ? def.name : id, disX + 14, dy);
+      const bw = 52, bh = 24, bx = disX + colW - 62, by = dy - bh / 2;
+      gctx.fillStyle = '#2f6fb0';
+      roundRectPath(gctx, bx, by, bw, bh, 6); gctx.fill();
+      gctx.fillStyle = '#fff';
+      gctx.font = '13px system-ui, -apple-system, "Segoe UI", Roboto, Arial';
+      gctx.textAlign = 'center'; gctx.textBaseline = 'middle';
+      gctx.fillText('拆解', bx + bw / 2, dy);
+      gctx.textAlign = 'left';
+      gs.disassembleRects.push({ itemId: id, fromSlot, x: bx, y: by, w: bw, h: bh });
+      dy += 40;
+    }
   }
 
   gctx.fillStyle = '#999';
   gctx.font = '13px system-ui, -apple-system, "Segoe UI", Roboto, Arial';
   gctx.textAlign = 'center';
   gctx.textBaseline = 'bottom';
-  gctx.fillText('按 Z 关闭', W / 2, py + ph - 10);
+  gctx.fillText('按 Z 关闭 · 点击合成/拆解', W / 2, py + ph - 6);
 }
 
 // expose helpers for debugging
