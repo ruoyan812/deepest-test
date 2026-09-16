@@ -43,14 +43,14 @@ Cloudflare Pages hosts both the static site and the `functions/` backend, so the
 uses **Turso** for accounts (no separate server needed).
 
 1. In Cloudflare Pages, **Create a project** and connect the GitHub repo
-   `ruoyan812/deepest-test`.
+   `deepest-test`.
 2. Build settings:
    - Framework preset: **None**
    - Build command: *(leave empty)*
    - Build output directory: **`Deepest`**
    - (Functions are picked up automatically from `/functions`.)
 3. In **Settings → Environment variables**, add (for both Production and Preview):
-   - `TURSO_URL` = `libsql://deepest-ruoyan812.aws-ap-northeast-1.turso.io`
+   - `TURSO_URL` = `libsql://***.turso.io`
    - `TURSO_TOKEN` = `<your-turso-token>`
 4. Deploy. The site goes live at `https://<project>.pages.dev` and accounts are stored in Turso.
 
