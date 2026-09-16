@@ -2403,7 +2403,8 @@ async function initGame(playerName) {
     const k = e.key;
     // 对话进行中：空格/回车推进对话，屏蔽其他输入
     if (gameState && gameState.dialogue) {
-      if (k === ' ' || e.code === 'Space' || k === 'Enter') {
+      if (k === ' ' || e.code === 'Space' || k === 'Enter' ||
+          k === 'ArrowUp' || e.code === 'ArrowUp' || k === 'ArrowDown' || e.code === 'ArrowDown') {
         if (!e.repeat) advanceDialogue();
         e.preventDefault();
       }
@@ -2449,6 +2450,8 @@ async function initGame(playerName) {
     const t = e.touches[0];
     if (!t) return;
     if (gameState && gameState.status === 'gameover') { continueRespawn(); return; }
+    // 对话进行中：点击屏幕任意处推进对话
+    if (gameState && gameState.dialogue) { advanceDialogue(); return; }
     const tx = t.clientX, ty = t.clientY;
     // backpack button (bottom-left) opens the backpack
     if (gameState && gameState.backpackUnlocked && !gameState.backpackOpen && gameState.backpackBtnRect) {
@@ -3015,6 +3018,12 @@ function drawDialogue() {
   gctx.textAlign = 'right';
   gctx.textBaseline = 'bottom';
   gctx.fillText(d.speaker || '老者', boxX + boxW - 16, boxY + boxH - 12);
+  // 继续提示（右上角，避免玩家不知道如何推进对话）
+  gctx.font = '13px system-ui, -apple-system, "Segoe UI", Roboto, Arial';
+  gctx.fillStyle = 'rgba(255,255,255,0.7)';
+  gctx.textAlign = 'right';
+  gctx.textBaseline = 'top';
+  gctx.fillText('空格 / ↑ 继续 ▶', boxX + boxW - 16, boxY + 10);
   // dialogue text (wrapped)
   gctx.font = '18px system-ui, -apple-system, "Segoe UI", Roboto, Arial';
   gctx.fillStyle = '#ffffff';
