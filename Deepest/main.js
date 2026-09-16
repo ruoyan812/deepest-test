@@ -1011,8 +1011,19 @@ const ITEM_CATEGORIES = [
 const ITEM_DEFS = {
   'bat-fang': { name: '巨型蝙蝠尖牙', category: 'weapon', range: 96, damage: 5 },
   'small-bat-fang': { name: '小型蝙蝠尖牙', category: 'material' },
-  'crocodile-scale': { name: '鳄鱼鳞片', category: 'weapon', range: 112, damage: 8 }
+  'crocodile-scale': { name: '鳄鱼鳞片', category: 'weapon', range: 112, damage: 8 },
+  'fang-dagger': { name: '蝙蝠尖牙匕首', category: 'weapon', range: 70, damage: 4 },
+  'fang-spear': { name: '强化蝠牙长枪', category: 'weapon', range: 110, damage: 6 },
+  'scale-blade': { name: '鳞牙巨剑', category: 'weapon', range: 130, damage: 9 }
 };
+
+// 合成配方：将材料合成为武器（在背包的「合成台」中点击合成）
+const RECIPES = [
+  { out: 'fang-dagger', outCount: 1, cost: { 'small-bat-fang': 2 }, name: '蝙蝠尖牙匕首' },
+  { out: 'bat-fang',    outCount: 1, cost: { 'small-bat-fang': 3 }, name: '巨型蝙蝠尖牙' },
+  { out: 'fang-spear',  outCount: 1, cost: { 'small-bat-fang': 2, 'bat-fang': 1 }, name: '强化蝠牙长枪' },
+  { out: 'scale-blade', outCount: 1, cost: { 'small-bat-fang': 3, 'crocodile-scale': 1 }, name: '鳞牙巨剑' }
+];
 
 // ----- 融合：对方的新世界（遗忘的山洞村庄 / 深渊 / 上层 / 爬行领主）所需常量 -----
 const HOLE_X = 2000;             // 地面上的洞口 x（从村庄掉入）
@@ -1374,13 +1385,15 @@ function flashSaving(gs) {
 
 // ----- Campfire save point (level 3) -----
 function isNearCampfire(gs) {
-  return !!(gs.campfire && (gs.scene === 'level2' || gs.scene === 'level4') && Math.abs(gs.player.x - gs.campfire.x) < 90);
+  return !!(gs.campfire && (gs.scene === 'level2' || gs.scene === 'level4' || gs.scene === 'village' || gs.scene === 'depths') && Math.abs(gs.player.x - gs.campfire.x) < 90);
 }
 function saveAtCampfire() {
   const gs = gameState;
   if (!gs || gs.status !== 'playing' || gs.fade) return;
   if (!isNearCampfire(gs)) return;
-  setEnteredLevel2(gs.player.name);
+  if (gs.scene === 'level2') setEnteredLevel2(gs.player.name);
+  else if (gs.scene === 'level4') setEnteredLevel4(gs.player.name);
+  // village / depths 的「到达」由关卡推进逻辑记录，这里只保存物品与回血
   savePlayerInfo(gs);
   saveServerProgress();
   flashSaving(gs);
@@ -1805,7 +1818,7 @@ function setupDepthsScene(gs) {
   gs.houses = [];
   gs.npc = { id: 'guard', name: '村庄守卫', x: 3200, y: groundY - 300 }; // guard beside the big pit (talk with ↑)
   gs.dialogue = null;
-  gs.campfire = null;
+  gs.campfire = { x: 250, y: groundY };  // 深渊入口处的存档火堆
   gs.caveX = -1;
   gs.gasX = GAS_START_X;
   gs.rocks = [];
@@ -2525,6 +2538,14 @@ async function initGame(playerName) {
   // clicking the on-screen "Continue" button respawns after death
   function clickHandler(e) {
     const gs = gameState;
+    if (gs && gs.backpackOpen && gs.craftRects) {
+      for (const b of gs.craftRects) {
+        if (e.clientX >= b.x && e.clientX <= b.x + b.w && e.clientY >= b.y && e.clientY <= b.y + b.h) {
+          doCraft(b);
+          return;
+        }
+      }
+    }
     if (!gs || gs.fade || gs.backpackOpen) return;
     // backpack button (bottom-left) opens the backpack
     if (gs.backpackUnlocked && gs.backpackBtnRect) {
@@ -3685,7 +3706,7 @@ function drawItemGlyph(x, y, itemId, r) {
   const color = CATEGORY_COLORS[cat] || '#888';
   gctx.save();
   gctx.translate(x, y);
-  if (itemId === 'bat-fang' || itemId === 'small-bat-fang') {
+  if (itemId === 'bat-fang' || itemId === 'small-bat-fang' || itemId === 'fang-dagger' || itemId === 'fang-spear' || itemId === 'scale-blade') {
     // bat fang: an ivory, downward-pointing tooth
     gctx.beginPath();
     gctx.moveTo(0, -r);
@@ -3777,6 +3798,30 @@ function drawBackpackButton() {
   gctx.fillText('背包 (Z)', x + w / 2, y + h / 2);
 }
 
+function canCraft(gs, rc) {
+  for (const id in rc.cost) {
+    if ((gs.inventory[id] || 0) < rc.cost[id]) return false;
+  }
+  return true;
+}
+function doCraft(rc) {
+  const gs = gameState;
+  if (!gs || gs.fade || !gs.backpackOpen) return;
+  if (!canCraft(gs, rc)) { gs.pickups.push({ text: '材料不足', timer: 90 }); return; }
+  for (const id in rc.cost) {
+    gs.inventory[id] -= rc.cost[id];
+    if (gs.inventory[id] <= 0) delete gs.inventory[id];
+  }
+  const out = rc.out;
+  gs.inventory[out] = (gs.inventory[out] || 0) + (rc.outCount || 1);
+  // 空手时自动装备合成出的武器
+  if (!gs.weaponSlot && ITEM_DEFS[out] && ITEM_DEFS[out].category === 'weapon') {
+    gs.weaponSlot = out;
+  }
+  savePlayerInfo(gs);
+  saveServerProgress();
+  gs.pickups.push({ text: '合成了 ' + (ITEM_DEFS[out] ? ITEM_DEFS[out].name : out), timer: 90 });
+}
 function drawBackpack() {
   const gs = gameState;
   const pw = Math.min(W * 0.84, 760);
@@ -3842,6 +3887,7 @@ function drawBackpack() {
     listY += 24;
 
     for (const id of items) {
+      if (listY > py + ph - 185) break;
       const def = ITEM_DEFS[id];
       const count = gs.inventory[id];
       const rect = { itemId: id, category: def.category, x: listX, y: listY, w: listW, h: rowH - 4 };
@@ -3870,6 +3916,49 @@ function drawBackpack() {
 
   if (gs.dragState) {
     drawItemGlyph(gs.dragState.x, gs.dragState.y, gs.dragState.itemId, 24);
+  }
+
+  // 合成台（底部固定区域）
+  gs.craftRects = [];
+  const craftTop = py + ph - 176;
+  gctx.fillStyle = 'rgba(255,255,255,0.07)';
+  roundRectPath(gctx, px + 16, craftTop, pw - 32, 164, 10);
+  gctx.fill();
+  gctx.strokeStyle = 'rgba(255,213,74,0.5)';
+  gctx.lineWidth = 1.5;
+  roundRectPath(gctx, px + 16, craftTop, pw - 32, 164, 10);
+  gctx.stroke();
+  gctx.fillStyle = '#ffd54a';
+  gctx.font = 'bold 16px system-ui, -apple-system, "Segoe UI", Roboto, Arial';
+  gctx.textAlign = 'left'; gctx.textBaseline = 'top';
+  gctx.fillText('合成台', px + 30, craftTop + 10);
+  let ry = craftTop + 40;
+  for (const rc of RECIPES) {
+    const can = canCraft(gs, rc);
+    gctx.fillStyle = '#fff';
+    gctx.font = '15px system-ui, -apple-system, "Segoe UI", Roboto, Arial';
+    gctx.textAlign = 'left'; gctx.textBaseline = 'middle';
+    gctx.fillText(rc.name, px + 32, ry);
+    gctx.fillStyle = can ? '#9fe0a0' : '#d98b8b';
+    gctx.font = '13px system-ui, -apple-system, "Segoe UI", Roboto, Arial';
+    let mx = px + 210;
+    for (const id in rc.cost) {
+      const need = rc.cost[id];
+      const hasN = gs.inventory[id] || 0;
+      const txt = ITEM_DEFS[id].name + '×' + need + (hasN < need ? ' (' + hasN + ')' : '');
+      gctx.fillText(txt, mx, ry);
+      mx += gctx.measureText(txt).width + 18;
+    }
+    const bw = 64, bh = 26, bx = px + pw - 92, by = ry - bh / 2;
+    gctx.fillStyle = can ? '#27ae60' : '#4a4a4a';
+    roundRectPath(gctx, bx, by, bw, bh, 6); gctx.fill();
+    gctx.fillStyle = '#fff';
+    gctx.font = '14px system-ui, -apple-system, "Segoe UI", Roboto, Arial';
+    gctx.textAlign = 'center'; gctx.textBaseline = 'middle';
+    gctx.fillText('合成', bx + bw / 2, ry);
+    gctx.textAlign = 'left';
+    gs.craftRects.push({ out: rc.out, cost: rc.cost, outCount: rc.outCount || 1, x: bx, y: by, w: bw, h: bh });
+    ry += 33;
   }
 
   gctx.fillStyle = '#999';
