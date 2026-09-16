@@ -2435,9 +2435,9 @@ async function initGame(playerName) {
     }
     if (k === 'ArrowLeft' || k === 'a' || k === 'A') input.left = true;
     if (k === 'ArrowRight' || k === 'd' || k === 'D') input.right = true;
-    // ↑ near NPC 对话（不跳跃）；↑ 在篝火旁存档；否则 ↑/Space/W 跳跃
+    // ↑ near NPC 对话（不跳跃）；V 在篝火旁存档；否则 ↑/Space/W 跳跃
     const talkingToNpc = (k === 'ArrowUp') && gameState && isNearNpc(gameState);
-    const savingAtCampfire = (k === 'ArrowUp') && gameState && isNearCampfire(gameState);
+    const savingAtCampfire = ((k === 'v' || k === 'V' || e.code === 'KeyV') ) && gameState && isNearCampfire(gameState);
     if (talkingToNpc) {
       if (!e.repeat) talkToNpc();
     } else if (savingAtCampfire) {
@@ -2852,7 +2852,7 @@ function drawCampfire(cam) {
     gctx.fillStyle = '#ffd54a';
     gctx.textAlign = 'center';
     gctx.textBaseline = 'bottom';
-    gctx.fillText('按↑即可存档', cx, cy - 38);
+    gctx.fillText('按 V 即可存档', cx, cy - 38);
   }
 }
 
