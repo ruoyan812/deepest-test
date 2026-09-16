@@ -3443,7 +3443,9 @@ function drawAdminPanel() {
     { scene: 'cave', label: '关卡2 · 洞穴' },
     { scene: 'level2', label: '关卡3 · 平原' },
     { scene: 'level4', label: '关卡4 · 沼泽' },
-    { scene: 'village', label: '关卡5 · 遗失的村庄' }
+    { scene: 'village', label: '关卡5 · 遗失的村庄' },
+    { scene: 'depths', label: '关卡6 · 深渊' },
+    { scene: 'upper', label: '关卡7 · 上层' }
   ];
   const w = 192, h = 38, gap = 10, x = 14, startY = 14;
   gs.adminButtons = [];
@@ -3502,13 +3504,57 @@ function drawEnemies(cam) {
         const blink = (Math.floor(e.flashTimer / 3) % 2) === 0;
         cfill = blink ? '#ffffff' : '#0c1f42';
       }
+      const dir = e.dir >= 0 ? 1 : -1;
+      gctx.save();
+      gctx.translate(sx, sy);
+      gctx.scale(dir, 1);
+      // 腿（三对，带关节，延伸至地面）
+      gctx.strokeStyle = 'rgba(4,8,20,0.9)';
+      gctx.lineWidth = 2;
+      for (let li = -1; li <= 1; li++) {
+        const lx = li * e.rx * 0.5;
+        gctx.beginPath();
+        gctx.moveTo(lx, e.ry * 0.4);
+        gctx.lineTo(lx - e.rx * 0.35, e.ry * 1.1);
+        gctx.lineTo(lx - e.rx * 0.1, e.ry * 1.25);
+        gctx.stroke();
+        gctx.beginPath();
+        gctx.moveTo(lx, e.ry * 0.4);
+        gctx.lineTo(lx + e.rx * 0.35, e.ry * 1.1);
+        gctx.lineTo(lx + e.rx * 0.1, e.ry * 1.25);
+        gctx.stroke();
+      }
+      // 身体（椭圆甲壳）
       gctx.beginPath();
-      gctx.ellipse(sx, sy, e.rx, e.ry, 0, 0, Math.PI * 2);
+      gctx.ellipse(0, 0, e.rx, e.ry, 0, 0, Math.PI * 2);
       gctx.fillStyle = cfill;
       gctx.fill();
       gctx.strokeStyle = 'rgba(4,8,20,0.9)';
       gctx.lineWidth = 2;
       gctx.stroke();
+      // 背壳分节高光
+      gctx.strokeStyle = 'rgba(120,160,210,0.55)';
+      gctx.lineWidth = 1.5;
+      gctx.beginPath();
+      gctx.ellipse(-e.rx * 0.1, -e.ry * 0.1, e.rx * 0.55, e.ry * 0.5, 0, Math.PI, 0);
+      gctx.stroke();
+      // 头部（朝移动方向）+ 大颚
+      gctx.fillStyle = cfill;
+      gctx.beginPath();
+      gctx.ellipse(e.rx * 0.95, 0, e.rx * 0.38, e.ry * 0.55, 0, 0, Math.PI * 2);
+      gctx.fill();
+      gctx.stroke();
+      gctx.fillStyle = '#16273f';
+      gctx.beginPath();
+      gctx.moveTo(e.rx * 1.25, -e.ry * 0.25);
+      gctx.lineTo(e.rx * 1.7, -e.ry * 0.05);
+      gctx.lineTo(e.rx * 1.25, e.ry * 0.1);
+      gctx.closePath();
+      gctx.fill();
+      // 红色复眼
+      gctx.fillStyle = '#ff3b30';
+      gctx.beginPath(); gctx.arc(e.rx * 1.05, -e.ry * 0.25, e.rx * 0.12, 0, Math.PI * 2); gctx.fill();
+      gctx.restore();
       continue;
     }
     if (e.type === 'crawler-boss') { drawOverlord(e, sx); continue; }
